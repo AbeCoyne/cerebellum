@@ -79,17 +79,22 @@ async function processExpired(): Promise<void> {
       const contextEntries = allEntries.filter(e => e.id !== first.id);
       const decision = await callOperator(first, contextEntries);
       if (decision.action === 'synthesise') {
-        // Only remove entries the LLM actually targeted — route the rest to GK
-        const expiredIds = new Set(expired.map(e => e.id));
-        const synthesised = decision.target_ids.filter(id => expiredIds.has(id));
-        removeEntries(synthesised);
-        enqueue(decision.synthesis, 'operator:ttl-synthesis');
-        const remaining = expired.filter(e => !synthesised.includes(e.id));
-        if (remaining.length > 0) {
-          removeEntries(remaining.map(e => e.id));
-          for (const e of remaining) enqueue(e.content, e.source, e.capture_reason);
+        // Remove all targeted entries (expired or non-expired) so none linger
+        const targetSet = new Set(decision.target_ids);
+        const currentWeb = readWeb();
+        const toRemove = [...targetSet].filter(id => currentWeb.some(e => e.id === id));
+        if (toRemove.length > 0) {
+          removeEntries(toRemove);
+          enqueue(decision.synthesis, 'operator:ttl-synthesis');
+          // Route non-targeted expired entries to GK individually
+          const remaining = expired.filter(e => !targetSet.has(e.id));
+          if (remaining.length > 0) {
+            removeEntries(remaining.map(e => e.id));
+            for (const e of remaining) enqueue(e.content, e.source, e.capture_reason);
+          }
+          return;
         }
-        return;
+        // All targets gone — fall through to individual pass-through
       }
     } catch {
       // fall through to pass-through each entry individually
@@ -157,8 +162,10 @@ async function _evaluateOne(entry: WebEntry): Promise<void> {
  */
 let _operatorChain: Promise<void> = Promise.resolve();
 
-function scheduleEvaluate(entry: WebEntry): void {
+function scheduleWork(entry: WebEntry): void {
   _operatorChain = _operatorChain
+    .then(() => processExpired())
+    .catch(() => {}) // expiry sweep failure is non-fatal
     .then(() => _evaluateOne(entry))
     .catch(() => {}); // prevent one failure from breaking the chain
 }
@@ -168,24 +175,15 @@ function scheduleEvaluate(entry: WebEntry): void {
 /**
  * Intake a new thought into the Operator buffer.
  *
- * 1. Process any expired web entries (synchronous — ensures stale entries are
- *    cleaned up before computing TTL for the new arrival).
- * 2. Add the new entry to web.json with its TTL.
- * 3. Fire background evaluation (non-blocking).
+ * 1. Add the new entry to web.json with its TTL.
+ * 2. Schedule background work: expiry sweep → evaluation (non-blocking,
+ *    serialised through _operatorChain to prevent concurrent races).
  */
 export async function intake(
   content:         string,
   source:          string,
   capture_reason?: string,
 ): Promise<void> {
-  // 1. Expiry sweep (best-effort — never throws to the caller)
-  try {
-    await processExpired();
-  } catch {
-    // ignore
-  }
-
-  // 2. TTL: personal captures get 7d, everything else 1d
   const ttlHours = source === 'cli'
     ? cfg.operator.ttlPersonalHours
     : cfg.operator.ttlOperationalHours;
@@ -204,6 +202,6 @@ export async function intake(
 
   addEntry(entry);
 
-  // 3. Background evaluation
-  scheduleEvaluate(entry);
+  // Background: expiry sweep then evaluation (serialised, non-blocking)
+  scheduleWork(entry);
 }

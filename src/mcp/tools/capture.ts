@@ -1,7 +1,6 @@
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { enqueue, readQueue } from '../../gatekeeper/queue.js';
-import { evaluate } from '../../gatekeeper/index.js';
+import { intake } from '../../operator/index.js';
 
 export function registerCapture(server: McpServer) {
   server.registerTool(
@@ -24,18 +23,11 @@ export function registerCapture(server: McpServer) {
     },
     async ({ content, capture_reason }) => {
       try {
-        const entry = enqueue(content, 'mcp', capture_reason);
-
-        // Fire-and-forget: gate evaluation runs in background
-        evaluate(entry).catch(err =>
-          console.error('[gate] MCP background evaluation error:', err),
-        );
-
-        const total = readQueue().length; // entry already written; count all statuses
+        await intake(content, 'mcp', capture_reason);
         return {
           content: [{
             type: 'text' as const,
-            text: `✓ Queued (${total} in queue)\n  Run 'memo review' to evaluate and store.`,
+            text: `✓ Held for synthesis\n  Run 'memo web' to inspect or 'memo review' to see GK queue.`,
           }],
         };
       } catch (err) {

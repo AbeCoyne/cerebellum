@@ -3,9 +3,10 @@
  * Cerebellum CLI
  *
  * Usage:
- *   memo "thought to capture"          Queue a thought for gatekeeper review
- *   memo --axiom "directive"           Queue as axiom (permanent hard directive)
+ *   memo "thought to capture"          Route through Operator → GK queue
+ *   memo --axiom "directive"           Bypass Operator → GK queue as axiom
  *   memo review                        Review queued thoughts one by one
+ *   memo web                           Inspect/force-synthesise/discard held web entries
  *   memo search "what was I thinking"  Semantic search
  *   memo recent [--days 7] [--limit 20]
  *   memo stats
@@ -20,7 +21,9 @@ import { generateEmbedding } from '../embeddings.js';
 import { enqueue, readQueue } from '../gatekeeper/queue.js';
 import { evaluate } from '../gatekeeper/index.js';
 import { runReview } from '../gatekeeper/review.js';
+import { intake } from '../operator/index.js';
 import { cmd_seed, cmd_seed_undo } from './seed.js';
+import { runWebReview } from './web.js';
 
 const args    = process.argv.slice(2);
 const command = args[0];
@@ -36,9 +39,10 @@ function print_help() {
   console.log(`
 cerebellum — personal second brain CLI
 
-  memo "thought"                   Queue a thought for gatekeeper review
-  memo --axiom "directive"         Queue as axiom (permanent directive)
+  memo "thought"                   Route through Operator → GK queue
+  memo --axiom "directive"         Bypass Operator → GK queue as axiom
   memo review                      Review queued thoughts interactively
+  memo web                         Inspect/force-synthesise/discard held entries
   memo search "query"              Semantic search
   memo recent                      List recent thoughts (--days N  --limit N)
   memo stats                       Show thinking patterns
@@ -49,24 +53,24 @@ cerebellum — personal second brain CLI
 `.trim());
 }
 
-// ─── capture (queues → gate evaluates async) ─────────────────────────────────
+// ─── capture ─────────────────────────────────────────────────────────────────
 
 async function cmd_capture(text: string, is_axiom = false) {
-  const entry = enqueue(text, 'cli', undefined, is_axiom || undefined);
-
-  // Fire-and-forget: gate evaluation runs in background
-  evaluate(entry).catch(err =>
-    console.error('[gate] background evaluation error:', err),
-  );
-
-  const total = readQueue().length; // entry already written; count all statuses
-
   if (is_axiom) {
+    // --axiom bypasses Operator entirely → straight to GK
+    const entry = enqueue(text, 'cli', undefined, true);
+    evaluate(entry).catch(err =>
+      console.error('[gate] background evaluation error:', err),
+    );
+    const total = readQueue().length;
     console.log(`⚡ Queued as axiom (${total} in queue)`);
+    console.log(`  Run 'memo review' to evaluate and store.`);
   } else {
-    console.log(`✓ Queued (${total} in queue)`);
+    // Normal capture → Operator (holds in web.json, evaluates async)
+    await intake(text, 'cli');
+    console.log(`✓ Held for synthesis`);
+    console.log(`  Run 'memo web' to inspect or 'memo review' to see GK queue.`);
   }
-  console.log(`  Run 'memo review' to evaluate and store.`);
 }
 
 // ─── search ───────────────────────────────────────────────────────────────────
@@ -155,6 +159,9 @@ if (!command || command === 'help' || command === '--help' || command === '-h') 
 
 } else if (command === 'review') {
   await runReview();
+
+} else if (command === 'web') {
+  await runWebReview();
 
 } else if (command === 'search') {
   const query = args[1];

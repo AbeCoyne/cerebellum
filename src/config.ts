@@ -37,4 +37,10 @@ export const cfg = {
     queueMax:    parseInt(optional_env('GATE_QUEUE_MAX', '100'), 10),
     adversarial: optional_env('GATE_ADVERSARIAL', 'true') !== 'false',
   },
+  operator: {
+    model:               optional_env('OPERATOR_MODEL',                  'anthropic/claude-sonnet-4-6'),
+    webPath:             optional_env('OPERATOR_WEB_PATH',               join(homedir(), '.cerebellum', 'web.json')),
+    ttlPersonalHours:    parseInt(optional_env('OPERATOR_TTL_PERSONAL_HOURS',     '168'), 10), // 7d
+    ttlOperationalHours: parseInt(optional_env('OPERATOR_TTL_OPERATIONAL_HOURS',   '24'), 10), // 1d
+  },
 } as const;

@@ -1,7 +1,6 @@
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { enqueue, readQueue } from '../../gatekeeper/queue.js';
-import { evaluate } from '../../gatekeeper/index.js';
+import { intake } from '../../operator/index.js';
 
 export function registerCapture(server: McpServer) {
   server.registerTool(
@@ -9,8 +8,9 @@ export function registerCapture(server: McpServer) {
     {
       description:
         'Save a new thought to your brain from any AI tool. ' +
-        'The thought is queued and evaluated by the gatekeeper before being stored. ' +
-        'Use this to capture insights, decisions, person notes, tasks, or ideas while working. ' +
+        'The thought is held in a synthesis buffer (Operator), evaluated by an LLM, ' +
+        'then routed to the Gatekeeper queue before being stored. ' +
+        'Use this to capture insights, decisions, preferences, tasks, or ideas while working. ' +
         'Always provide a capture_reason explaining why this thought is worth storing.',
       inputSchema: {
         content: z.string().min(3).describe(
@@ -24,18 +24,11 @@ export function registerCapture(server: McpServer) {
     },
     async ({ content, capture_reason }) => {
       try {
-        const entry = enqueue(content, 'mcp', capture_reason);
-
-        // Fire-and-forget: gate evaluation runs in background
-        evaluate(entry).catch(err =>
-          console.error('[gate] MCP background evaluation error:', err),
-        );
-
-        const total = readQueue().length; // entry already written; count all statuses
+        await intake(content, 'mcp', capture_reason);
         return {
           content: [{
             type: 'text' as const,
-            text: `✓ Queued (${total} in queue)\n  Run 'memo review' to evaluate and store.`,
+            text: `✓ Held for synthesis\n  Run 'memo web' to inspect or 'memo review' to see GK queue.`,
           }],
         };
       } catch (err) {

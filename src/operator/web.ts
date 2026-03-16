@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync } from 'fs';
 import { join, dirname } from 'path';
+import { randomUUID } from 'crypto';
 import { cfg } from '../config.js';
 import type { WebEntry } from './types.js';
 
@@ -31,7 +32,7 @@ export function readWeb(): WebEntry[] {
 function writeWeb(entries: WebEntry[]): void {
   const path = cfg.operator.webPath;
   ensureDir(path);
-  const tmp = join(dirname(path), `.cerebellum-web-${Date.now()}.tmp`);
+  const tmp = join(dirname(path), `.cerebellum-web-${Date.now()}-${randomUUID().slice(0, 8)}.tmp`);
   writeFileSync(tmp, JSON.stringify(entries, null, 2), 'utf-8');
   renameSync(tmp, path);
 }

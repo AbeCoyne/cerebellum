@@ -61,8 +61,9 @@ async function callOperator(
 // ─── TTL expiry ───────────────────────────────────────────────────────────────
 
 /**
- * Check for expired entries. For each expired cluster, attempt one final synthesis;
- * if the cluster has only one entry (or synthesis fails), discard the entries.
+ * Check for expired entries. For 2+ expired, attempt one final synthesis;
+ * on pass-through or failure, route each expired entry to GK individually
+ * so content is never silently discarded.
  */
 async function processExpired(): Promise<void> {
   const now     = Date.now();
@@ -73,8 +74,6 @@ async function processExpired(): Promise<void> {
   // Try a synthesis over the entire expired cluster
   if (expired.length >= 2) {
     try {
-      // Use the first expired entry as the "new" entry; pass full buffer
-      // (minus first) as context so the LLM sees non-expired entries too.
       const [first] = expired;
       const allEntries = readWeb();
       const contextEntries = allEntries.filter(e => e.id !== first.id);
@@ -85,12 +84,15 @@ async function processExpired(): Promise<void> {
         return;
       }
     } catch {
-      // fall through to discard
+      // fall through to pass-through each entry individually
     }
   }
 
-  // Discard all expired entries
+  // Pass each expired entry through to GK rather than silently discarding
   removeEntries(expired.map(e => e.id));
+  for (const e of expired) {
+    enqueue(e.content, e.source, e.capture_reason);
+  }
 }
 
 // ─── core evaluation ─────────────────────────────────────────────────────────
@@ -124,9 +126,13 @@ async function _evaluateOne(entry: WebEntry): Promise<void> {
     updateEntry(entry.id, { cluster_hint: decision.cluster_hint });
 
   } else if (decision.action === 'synthesise') {
+    // Re-read web after the LLM call — targets may have been removed by
+    // concurrent `memo web` during the round-trip.
+    const freshWeb = readWeb();
     const toRemove = decision.target_ids.filter(id =>
-      web.some(e => e.id === id),
+      freshWeb.some(e => e.id === id),
     );
+    if (toRemove.length === 0) return; // all targets already handled
     removeEntries(toRemove);
     enqueue(decision.synthesis, 'operator:synthesis');
   }

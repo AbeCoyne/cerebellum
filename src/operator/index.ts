@@ -79,8 +79,16 @@ async function processExpired(): Promise<void> {
       const contextEntries = allEntries.filter(e => e.id !== first.id);
       const decision = await callOperator(first, contextEntries);
       if (decision.action === 'synthesise') {
-        removeEntries(expired.map(e => e.id));
+        // Only remove entries the LLM actually targeted — route the rest to GK
+        const expiredIds = new Set(expired.map(e => e.id));
+        const synthesised = decision.target_ids.filter(id => expiredIds.has(id));
+        removeEntries(synthesised);
         enqueue(decision.synthesis, 'operator:ttl-synthesis');
+        const remaining = expired.filter(e => !synthesised.includes(e.id));
+        if (remaining.length > 0) {
+          removeEntries(remaining.map(e => e.id));
+          for (const e of remaining) enqueue(e.content, e.source, e.capture_reason);
+        }
         return;
       }
     } catch {
@@ -128,8 +136,11 @@ async function _evaluateOne(entry: WebEntry): Promise<void> {
   } else if (decision.action === 'synthesise') {
     // Re-read web after the LLM call — targets may have been removed by
     // concurrent `memo web` during the round-trip.
+    // Always include entry.id in removal set — the LLM may omit it from
+    // target_ids but the triggering entry should never linger post-synthesis.
     const freshWeb = readWeb();
-    const toRemove = decision.target_ids.filter(id =>
+    const candidateIds = [...new Set([entry.id, ...decision.target_ids])];
+    const toRemove = candidateIds.filter(id =>
       freshWeb.some(e => e.id === id),
     );
     if (toRemove.length === 0) return; // all targets already handled

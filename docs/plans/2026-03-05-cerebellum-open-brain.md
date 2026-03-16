@@ -114,7 +114,7 @@ create table thoughts (
 );
 
 -- metadata shape:
--- { "type": "observation|task|idea|reference|people|preference",
+-- { "type": "observation|task|idea|reference|person|preference",
 --   "topics": ["tag1", "tag2"],
 --   "people": ["name"],
 --   "action_items": ["..."] }

@@ -85,7 +85,7 @@ claude mcp add --transport stdio --scope user cerebellum -- node /path/to/dist/m
 
 Each captured thought is automatically classified into:
 
-- **Type** — `observation` · `task` · `idea` · `reference` · `people` · `preference`
+- **Type** — `observation` · `task` · `idea` · `reference` · `person` · `preference`
 - **Topics** — 1–3 tags
 - **People** — mentioned names
 - **Action items** — implied next steps

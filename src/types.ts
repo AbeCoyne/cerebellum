@@ -3,7 +3,7 @@ export type ThoughtType =
   | 'task'
   | 'idea'
   | 'reference'
-  | 'people'
+  | 'person'
   | 'preference'
   | 'veto';         // axiom — permanent directive; confidence stays at 1.0
 

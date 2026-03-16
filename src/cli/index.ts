@@ -92,7 +92,7 @@ async function cmd_search(query: string, limit = 10) {
     console.log(`[${i + 1}]${sim}  ${date}  ${m.type}`);
     console.log(`  ${t.content}`);
     if (m.topics.length)  console.log(`  topics:  ${m.topics.join(', ')}`);
-    if (m.people.length)  console.log(`  people:  ${m.people.join(', ')}`);
+    if (m.mentions.length)  console.log(`  people:  ${m.mentions.join(', ')}`);
     console.log();
   }
 }
@@ -114,7 +114,7 @@ async function cmd_recent(days = 7, limit = 20) {
     console.log(`[${i + 1}]  ${date}  ${m.type}`);
     console.log(`  ${t.content}`);
     if (m.topics.length)       console.log(`  topics:  ${m.topics.join(', ')}`);
-    if (m.people.length)       console.log(`  people:  ${m.people.join(', ')}`);
+    if (m.mentions.length)     console.log(`  people:  ${m.mentions.join(', ')}`);
     if (m.action_items.length) console.log(`  actions: ${m.action_items.join(' · ')}`);
     console.log();
   }

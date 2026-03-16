@@ -31,7 +31,7 @@ capture, and format them as:
 
 {
   "content": "<the thought in plain first-person language>",
-  "type": "observation" | "task" | "idea" | "reference" | "person" | "preference"
+  "type": "observation" | "task" | "idea" | "reference" | "people" | "preference"
 }
 
 Focus on:

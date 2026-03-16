@@ -3,14 +3,14 @@ export type ThoughtType =
   | 'task'
   | 'idea'
   | 'reference'
-  | 'person'
+  | 'people'
   | 'preference'
   | 'veto';         // axiom — permanent directive; confidence stays at 1.0
 
 export interface ThoughtMetadata {
   type:         ThoughtType;
   topics:       string[];
-  people:       string[];
+  mentions:     string[];
   action_items: string[];
 }
 

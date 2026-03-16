@@ -60,7 +60,7 @@ export function formatConfirmation(result: CaptureResult): string {
     `✓ Captured in ${elapsed_ms}ms`,
     `  type:    ${m.type}`,
     `  topics:  ${m.topics.length ? m.topics.join(', ') : '(none)'}`,
-    `  people:  ${m.people.length ? m.people.join(', ') : '(none)'}`,
+    `  people:  ${m.mentions.length ? m.mentions.join(', ') : '(none)'}`,
   ];
 
   if (m.action_items.length) {

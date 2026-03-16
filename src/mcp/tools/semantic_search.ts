@@ -35,7 +35,7 @@ export function registerSemanticSearch(server: McpServer) {
             `[${i + 1}]${sim} — ${date} — ${m.type}`,
             `  ${t.content}`,
             m.topics.length  ? `  topics:  ${m.topics.join(', ')}` : '',
-            m.people.length  ? `  people:  ${m.people.join(', ')}` : '',
+            m.mentions.length  ? `  people:  ${m.mentions.join(', ')}` : '',
           ].filter(Boolean).join('\n');
         });
 

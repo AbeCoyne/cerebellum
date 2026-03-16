@@ -87,7 +87,8 @@ async function processExpired(): Promise<void> {
           removeEntries(toRemove);
           enqueue(decision.synthesis, 'operator:ttl-synthesis');
           // Route non-targeted expired entries to GK individually
-          const remaining = expired.filter(e => !targetSet.has(e.id));
+          // Filter remaining against currentWeb — some may have been handled by `memo web`
+          const remaining = expired.filter(e => !targetSet.has(e.id) && currentWeb.some(w => w.id === e.id));
           if (remaining.length > 0) {
             removeEntries(remaining.map(e => e.id));
             for (const e of remaining) enqueue(e.content, e.source, e.capture_reason);
@@ -101,9 +102,13 @@ async function processExpired(): Promise<void> {
     }
   }
 
-  // Pass each expired entry through to GK rather than silently discarding
-  removeEntries(expired.map(e => e.id));
-  for (const e of expired) {
+  // Re-read web before fallback — some expired entries may have been handled
+  // by concurrent `memo web` during the LLM round-trip.
+  const webNow = readWeb();
+  const stillExpired = expired.filter(e => webNow.some(w => w.id === e.id));
+  if (stillExpired.length === 0) return;
+  removeEntries(stillExpired.map(e => e.id));
+  for (const e of stillExpired) {
     enqueue(e.content, e.source, e.capture_reason);
   }
 }
@@ -132,6 +137,8 @@ async function _evaluateOne(entry: WebEntry): Promise<void> {
   }
 
   if (decision.action === 'pass-through') {
+    // Re-read post-LLM — concurrent `memo web` may have already routed this entry.
+    if (!readWeb().some(e => e.id === entry.id)) return;
     removeEntries([entry.id]);
     enqueue(entry.content, entry.source, entry.capture_reason);
 

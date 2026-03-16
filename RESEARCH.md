@@ -92,7 +92,7 @@ Accessible from: Claude, ChatGPT, Cursor, VS Code, Claude Code, any MCP client
 {
   "raw_text": "...",
   "embedding": [1536 floats],
-  "type": "observation | task | idea | reference | person_note",
+  "type": "observation | task | idea | reference | people | preference",
   "topics": ["tag1", "tag2"],
   "people": ["Sarah"],
   "action_items": ["Follow up on consulting idea"]

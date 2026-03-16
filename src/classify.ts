@@ -5,7 +5,7 @@ const SYSTEM_PROMPT = `You extract structured metadata from a personal thought/n
 
 Return ONLY valid JSON matching this shape:
 {
-  "type": "observation" | "task" | "idea" | "reference" | "person_note",
+  "type": "observation" | "task" | "idea" | "reference" | "people" | "preference",
   "topics": string[],      // 1-3 short lowercase tags
   "people": string[],      // full names mentioned (empty array if none)
   "action_items": string[] // specific next actions implied (empty array if none)
@@ -16,7 +16,8 @@ Type guide:
 - task: something to do
 - idea: creative or strategic thought
 - reference: a fact, link, or source to remember
-- person_note: primarily about a specific person`;
+- people: primarily about a specific person — relationships, context, notes
+- preference: a personal taste, aesthetic, or opinion — things you like, dislike, or prefer`;
 
 export async function classifyThought(content: string): Promise<ThoughtMetadata> {
   const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
@@ -50,7 +51,7 @@ export async function classifyThought(content: string): Promise<ThoughtMetadata>
     return { type: 'observation', topics: [], people: [], action_items: [] };
   }
 
-  const VALID_TYPES: ThoughtMetadata['type'][] = ['observation', 'task', 'idea', 'reference', 'person_note'];
+  const VALID_TYPES: ThoughtMetadata['type'][] = ['observation', 'task', 'idea', 'reference', 'people', 'preference'];
 
   try {
     const parsed = JSON.parse(json.choices[0].message.content) as ThoughtMetadata;

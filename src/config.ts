@@ -25,14 +25,18 @@ export const cfg = {
   openrouter: {
     apiKey:          require_env('OPENROUTER_API_KEY'),
     embeddingModel:  optional_env('EMBEDDING_MODEL',  'openai/text-embedding-3-small'),
-    classifierModel: optional_env('CLASSIFIER_MODEL', 'openai/gpt-4o-mini'),
+    // Sonnet is overkill for structured extraction — a cheaper model like
+    // openai/gpt-4o-mini ($0.15/$0.60 per 1M tokens) works fine here.
+    classifierModel: optional_env('CLASSIFIER_MODEL', 'anthropic/claude-sonnet-4-6'),
   },
   http: {
     apiKey: optional_env('CEREBELLUM_API_KEY', ''),
     port:   parseInt(optional_env('CEREBELLUM_PORT', '4891'), 10),
   },
   gate: {
-    model:       optional_env('GATE_MODEL',       'openai/gpt-4o-mini'),
+    // Sonnet is overkill for gatekeeper scoring — a cheaper model like
+    // openai/gpt-4o-mini ($0.15/$0.60 per 1M tokens) works fine here.
+    model:       optional_env('GATE_MODEL',       'anthropic/claude-sonnet-4-6'),
     queuePath:   optional_env('CEREBELLUM_QUEUE_PATH', join(homedir(), '.cerebellum', 'queue.json')),
     queueMax:    parseInt(optional_env('GATE_QUEUE_MAX', '100'), 10),
     adversarial: optional_env('GATE_ADVERSARIAL', 'true') !== 'false',

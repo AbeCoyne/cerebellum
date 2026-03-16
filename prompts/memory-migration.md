@@ -15,7 +15,7 @@ and save it as structured thoughts.
 For each piece of context you have about me, format it as a JSON object with this shape:
 {
   "content": "<the actual memory, written as a first-person thought>",
-  "type": "observation" | "task" | "idea" | "reference" | "person_note"
+  "type": "observation" | "task" | "idea" | "reference" | "people" | "preference"
 }
 
 Include:

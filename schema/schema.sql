@@ -21,7 +21,7 @@ create table if not exists thoughts (
 
 -- metadata shape:
 -- {
---   "type":         "observation" | "task" | "idea" | "reference" | "person_note" | "veto",
+--   "type":         "observation" | "task" | "idea" | "reference" | "people" | "preference" | "veto",
 --   "topics":       string[],   -- 1–3 tags
 --   "people":       string[],   -- mentioned names
 --   "action_items": string[]    -- implied next actions

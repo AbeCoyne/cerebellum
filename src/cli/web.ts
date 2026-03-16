@@ -87,6 +87,10 @@ async function resolveEntry(entry: WebEntry, index: number, total: number): Prom
     }
 
     case 'discard': {
+      if (!readWeb().some(e => e.id === entry.id)) {
+        console.log('  ↳ Already handled by background evaluation — skipping.');
+        return true;
+      }
       removeEntries([entry.id]);
       console.log('  ✓ Discarded.');
       return true;

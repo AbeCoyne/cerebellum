@@ -49,7 +49,7 @@ async function callOperator(
         { role: 'system', content: OPERATOR_SYSTEM_PROMPT },
         { role: 'user',   content: buildOperatorMessage(newEntry, currentWeb) },
       ],
-      max_tokens:      512,
+      max_tokens:      1024,
       temperature:     0.2,
       response_format: { type: 'json_object' },
     }),

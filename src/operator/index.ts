@@ -79,10 +79,12 @@ async function processExpired(): Promise<void> {
       const contextEntries = allEntries.filter(e => e.id !== first.id);
       const decision = await callOperator(first, contextEntries);
       if (decision.action === 'synthesise') {
-        // Remove all targeted entries (expired or non-expired) so none linger
-        const targetSet = new Set(decision.target_ids);
+        // Always include first.id — LLM may omit it from target_ids.
+        // Remove all targeted entries (expired or non-expired) so none linger.
+        const candidateIds = [...new Set([first.id, ...decision.target_ids])];
+        const targetSet = new Set(candidateIds);
         const currentWeb = readWeb();
-        const toRemove = [...targetSet].filter(id => currentWeb.some(e => e.id === id));
+        const toRemove = candidateIds.filter(id => currentWeb.some(e => e.id === id));
         if (toRemove.length > 0) {
           removeEntries(toRemove);
           enqueue(decision.synthesis, 'operator:ttl-synthesis');

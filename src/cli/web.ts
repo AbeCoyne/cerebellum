@@ -71,6 +71,12 @@ async function resolveEntry(entry: WebEntry, index: number, total: number): Prom
     }
 
     case 'pass': {
+      // Re-read post-prompt — a "Re-evaluate now" background run may have
+      // already synthesised and removed this entry during the select delay.
+      if (!readWeb().some(e => e.id === entry.id)) {
+        console.log('  ↳ Already handled by background evaluation — skipping.');
+        return true;
+      }
       removeEntries([entry.id]);
       const gkEntry = enqueue(entry.content, entry.source, entry.capture_reason);
       evaluate(gkEntry).catch(err =>

@@ -1,5 +1,5 @@
 import { select } from '@inquirer/prompts';
-import { readWeb, removeEntries, updateEntry } from '../operator/web.js';
+import { readWeb, removeEntries } from '../operator/web.js';
 import { enqueue } from '../gatekeeper/queue.js';
 import { evaluate } from '../gatekeeper/index.js';
 import { intake } from '../operator/index.js';
@@ -46,7 +46,7 @@ function displayEntry(entry: WebEntry, index: number, total: number): void {
 async function forceSynthesise(entry: WebEntry): Promise<void> {
   removeEntries([entry.id]);
   await intake(entry.content, entry.source, entry.capture_reason);
-  console.log('  ↺ Synthesis triggered — check results in a moment.');
+  console.log('  ↺ Re-evaluation triggered — check results in a moment.');
 }
 
 // ─── resolve one entry ────────────────────────────────────────────────────────
@@ -57,7 +57,7 @@ async function resolveEntry(entry: WebEntry, index: number, total: number): Prom
   const choice = await select({
     message: 'Decision:',
     choices: [
-      { name: '↺ Force synthesise', value: 'synthesise' },
+      { name: '↺ Re-evaluate now',  value: 'synthesise' },
       { name: '→ Pass through',     value: 'pass'       },
       { name: '✗ Discard',          value: 'discard'    },
       { name: '⟳ Skip',             value: 'skip'       },

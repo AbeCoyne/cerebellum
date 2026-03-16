@@ -73,9 +73,12 @@ async function processExpired(): Promise<void> {
   // Try a synthesis over the entire expired cluster
   if (expired.length >= 2) {
     try {
-      // Use the first expired entry as the "new" entry, rest as context
-      const [first, ...rest] = expired;
-      const decision = await callOperator(first, rest);
+      // Use the first expired entry as the "new" entry; pass full buffer
+      // (minus first) as context so the LLM sees non-expired entries too.
+      const [first] = expired;
+      const allEntries = readWeb();
+      const contextEntries = allEntries.filter(e => e.id !== first.id);
+      const decision = await callOperator(first, contextEntries);
       if (decision.action === 'synthesise') {
         removeEntries(expired.map(e => e.id));
         enqueue(decision.synthesis, 'operator:ttl-synthesis');
@@ -94,14 +97,20 @@ async function processExpired(): Promise<void> {
 
 async function _evaluateOne(entry: WebEntry): Promise<void> {
   const web = readWeb();
+  // Entry may have been removed by `memo web` before this background
+  // evaluation ran — bail out to avoid duplicate GK entries.
+  if (!web.some(e => e.id === entry.id)) return;
+
   const others = web.filter(e => e.id !== entry.id);
 
   let decision: OperatorDecision;
   try {
     decision = await callOperator(entry, others);
   } catch (err) {
-    // On LLM failure: fall back to pass-through so the thought is never lost
+    // On LLM failure: fall back to pass-through so the thought is never lost.
+    // Re-read web to check for concurrent removal before acting.
     console.error('[operator] LLM call failed, passing through:', err instanceof Error ? err.message : err);
+    if (!readWeb().some(e => e.id === entry.id)) return;
     removeEntries([entry.id]);
     enqueue(entry.content, entry.source, entry.capture_reason);
     return;

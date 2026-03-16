@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import { z } from 'zod';
 import { cfg } from '../config.js';
 import { enqueue } from '../gatekeeper/queue.js';
+import { evaluate } from '../gatekeeper/index.js';
 import { readWeb, addEntry, updateEntry, removeEntries } from './web.js';
 import { OPERATOR_SYSTEM_PROMPT, buildOperatorMessage } from './prompt.js';
 import type { WebEntry } from './types.js';
@@ -19,6 +20,16 @@ const DecisionSchema = z.discriminatedUnion('action', [
 ]);
 
 type OperatorDecision = z.infer<typeof DecisionSchema>;
+
+// ─── helpers ──────────────────────────────────────────────────────────────────
+
+/** enqueue + fire-and-forget gate evaluation (same pattern as CLI/MCP paths). */
+function enqueueAndEval(content: string, source: string, capture_reason?: string): void {
+  const gkEntry = enqueue(content, source, capture_reason);
+  evaluate(gkEntry).catch(err =>
+    console.error('[gate] background evaluation error:', err),
+  );
+}
 
 // ─── LLM call ────────────────────────────────────────────────────────────────
 
@@ -87,13 +98,13 @@ async function processExpired(): Promise<void> {
         const toRemove = candidateIds.filter(id => currentWeb.some(e => e.id === id));
         if (toRemove.length > 0) {
           removeEntries(toRemove);
-          enqueue(decision.synthesis, 'operator:ttl-synthesis');
+          enqueueAndEval(decision.synthesis, 'operator:ttl-synthesis');
           // Route non-targeted expired entries to GK individually
           // Filter remaining against currentWeb — some may have been handled by `memo web`
           const remaining = expired.filter(e => !targetSet.has(e.id) && currentWeb.some(w => w.id === e.id));
           if (remaining.length > 0) {
             removeEntries(remaining.map(e => e.id));
-            for (const e of remaining) enqueue(e.content, e.source, e.capture_reason);
+            for (const e of remaining) enqueueAndEval(e.content, e.source, e.capture_reason);
           }
           return;
         }
@@ -111,7 +122,7 @@ async function processExpired(): Promise<void> {
   if (stillExpired.length === 0) return;
   removeEntries(stillExpired.map(e => e.id));
   for (const e of stillExpired) {
-    enqueue(e.content, e.source, e.capture_reason);
+    enqueueAndEval(e.content, e.source, e.capture_reason);
   }
 }
 
@@ -134,7 +145,7 @@ async function _evaluateOne(entry: WebEntry): Promise<void> {
     console.error('[operator] LLM call failed, passing through:', err instanceof Error ? err.message : err);
     if (!readWeb().some(e => e.id === entry.id)) return;
     removeEntries([entry.id]);
-    enqueue(entry.content, entry.source, entry.capture_reason);
+    enqueueAndEval(entry.content, entry.source, entry.capture_reason);
     return;
   }
 
@@ -142,7 +153,7 @@ async function _evaluateOne(entry: WebEntry): Promise<void> {
     // Re-read post-LLM — concurrent `memo web` may have already routed this entry.
     if (!readWeb().some(e => e.id === entry.id)) return;
     removeEntries([entry.id]);
-    enqueue(entry.content, entry.source, entry.capture_reason);
+    enqueueAndEval(entry.content, entry.source, entry.capture_reason);
 
   } else if (decision.action === 'hold') {
     updateEntry(entry.id, { cluster_hint: decision.cluster_hint });
@@ -159,7 +170,7 @@ async function _evaluateOne(entry: WebEntry): Promise<void> {
     );
     if (toRemove.length === 0) return; // all targets already handled
     removeEntries(toRemove);
-    enqueue(decision.synthesis, 'operator:synthesis');
+    enqueueAndEval(decision.synthesis, 'operator:synthesis');
   }
 }
 

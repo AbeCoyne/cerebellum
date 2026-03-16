@@ -21,9 +21,9 @@ create table if not exists thoughts (
 
 -- metadata shape:
 -- {
---   "type":         "observation" | "task" | "idea" | "reference" | "person_note" | "veto",
+--   "type":         "observation" | "task" | "idea" | "reference" | "people" | "preference" | "veto",
 --   "topics":       string[],   -- 1–3 tags
---   "people":       string[],   -- mentioned names
+--   "mentions":     string[],   -- mentioned names
 --   "action_items": string[]    -- implied next actions
 -- }
 --
@@ -115,7 +115,7 @@ as $$
        from (
          select person, count(*)::int as count
          from thoughts,
-              jsonb_array_elements_text(coalesce(metadata->'people', '[]'::jsonb)) as person
+              jsonb_array_elements_text(coalesce(metadata->'mentions', '[]'::jsonb)) as person
          group by 1
          order by count desc
          limit 10

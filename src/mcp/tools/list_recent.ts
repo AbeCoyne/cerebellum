@@ -33,7 +33,7 @@ export function registerListRecent(server: McpServer) {
             `[${i + 1}] ${date} — ${m.type}`,
             `  ${t.content}`,
             m.topics.length ? `  topics:  ${m.topics.join(', ')}` : '',
-            m.people.length ? `  people:  ${m.people.join(', ')}` : '',
+            m.mentions.length ? `  people:  ${m.mentions.join(', ')}` : '',
             m.action_items.length ? `  actions: ${m.action_items.join(' · ')}` : '',
           ].filter(Boolean).join('\n');
         });

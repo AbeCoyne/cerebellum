@@ -114,9 +114,9 @@ create table thoughts (
 );
 
 -- metadata shape:
--- { "type": "observation|task|idea|reference|person_note",
+-- { "type": "observation|task|idea|reference|people|preference",
 --   "topics": ["tag1", "tag2"],
---   "people": ["name"],
+--   "mentions": ["name"],
 --   "action_items": ["..."] }
 
 -- Cosine similarity index

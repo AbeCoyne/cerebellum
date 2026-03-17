@@ -15,17 +15,27 @@ Capture thoughts from anywhere. Retrieve them semantically. Every AI tool you us
 
 ## How it works
 
+Thoughts pass through three stages before reaching the database:
+
 ```
-capture "thought text"
+memo "thought"
     ↓
-embed (text-embedding-3-small)  +  classify (gpt-4o-mini)
+Operator  (buffer + TTL synthesis)
+  holds related thoughts, synthesises clusters before they expire
+    ↓
+Gatekeeper  (quality + contradiction scoring)
+  scores 1–10, detects contradictions, adversarial review for borderline items
+    ↓
+memo review  (interactive approval)
+    ↓
+embed (text-embedding-3-small)  +  classify (claude-sonnet-4-6)
     ↓
 Postgres + pgvector (Supabase)
     ↓
-semantic_search / list_recent / stats  ←  any MCP client
+semantic_search / list_recent / stats / capture  ←  any MCP client
 ```
 
-**Cost**: ~$0.10–0.30/month at 20 thoughts/day.
+Use `memo --axiom "directive"` to bypass the Operator and queue a thought directly as an axiom.
 
 ## Stack
 
@@ -33,9 +43,29 @@ semantic_search / list_recent / stats  ←  any MCP client
 |---|---|
 | Storage | Supabase (Postgres + pgvector, HNSW index) |
 | Embeddings | `openai/text-embedding-3-small` via OpenRouter |
-| Classifier | `openai/gpt-4o-mini` via OpenRouter |
+| Classifier | `openai/gpt-4o-mini` via OpenRouter (configurable) |
+| Gatekeeper | `anthropic/claude-sonnet-4-6` via OpenRouter (configurable) |
+| Operator | `anthropic/claude-sonnet-4-6` via OpenRouter (configurable) |
 | Protocol | MCP (`@modelcontextprotocol/sdk`) |
-| CLI | Node.js + TypeScript |
+| HTTP daemon | Express on `127.0.0.1:4891` |
+| CLI | Node.js + TypeScript (`memo` alias) |
+
+## Operator
+
+The Operator is a short-term buffer. Rather than sending every thought straight to the Gatekeeper, it holds them in `~/.cerebellum/web.json` and looks for clusters worth synthesising. When related thoughts accumulate it collapses them into a single, richer entry. Thoughts that never cluster are passed through individually when their TTL expires (7 days for personal captures, 24h for operational ones).
+
+Three decisions: **pass-through**, **hold** (wait for more), **synthesise** (merge cluster → single thought).
+
+## Gatekeeper
+
+The Gatekeeper scores every thought before it enters the database:
+
+- **Quality score** 1–10 (Noise → Insight-grade)
+- **Recommendation** — `keep` · `drop` · `axiom` · `improve`
+- **Contradiction detection** — soft / hard / veto_violation against existing thoughts
+- **Adversarial review** — for borderline scores (4–7), a second LLM pass checks the reformulation
+
+Evaluated entries land in `~/.cerebellum/queue.json`. Run `memo review` to approve or reject them interactively.
 
 ## MCP Tools
 
@@ -46,13 +76,26 @@ semantic_search / list_recent / stats  ←  any MCP client
 | `stats` | Totals, type breakdown, top topics & people |
 | `capture` | Write to the brain from any MCP client |
 
+Also available over HTTP at `POST /mcp` when the daemon is running.
+
 ## CLI
 
+Set up the alias once:
 ```bash
-npm run cli -- "I noticed that X tends to happen when Y"   # capture
-npm run cli -- search "project planning"                    # semantic search
-npm run cli -- recent --days 7 --limit 20                  # recent thoughts
-npm run cli -- stats                                        # overview
+alias memo="node --import tsx/esm /path/to/cerebellum/src/cli/index.ts"
+```
+
+```bash
+memo "thought"                        # capture → Operator → GK queue
+memo --axiom "directive"              # bypass Operator, queue as axiom
+memo review                           # interactive GK queue review
+memo web                              # inspect/force-synthesise/discard held entries
+memo search "what was I thinking"     # semantic search
+memo recent [--days 7] [--limit 20]   # recent thoughts
+memo stats                            # overview
+memo seed <file.json>                 # batch import from JSON
+memo seed --dry-run <file.json>       # preview without writing
+memo seed --undo                      # delete all seeded thoughts
 ```
 
 ## Setup
@@ -68,11 +111,12 @@ npm install
 ```bash
 cp .env.example .env
 # Fill in SUPABASE_URL, SUPABASE_SERVICE_KEY, OPENROUTER_API_KEY
+# Generate CEREBELLUM_API_KEY with: openssl rand -hex 32
 ```
 
 **3. Run schema in Supabase SQL editor**
-```bash
-# Copy contents of schema/schema.sql → paste into Supabase SQL Editor → Run
+```
+Copy contents of schema/schema.sql → paste into Supabase SQL Editor → Run
 ```
 
 **4. Build and register MCP server**
@@ -80,6 +124,17 @@ cp .env.example .env
 npm run build
 claude mcp add --transport stdio --scope user cerebellum -- node /path/to/dist/mcp/server.js
 ```
+
+**5. Set up CLI alias**
+
+Add to your shell config (`~/.zshrc`, `~/.bashrc`, etc.):
+```bash
+alias memo="node --import tsx/esm /path/to/cerebellum/src/cli/index.ts"
+```
+
+**6. (Optional) HTTP daemon**
+
+Run `npm run build && node dist/http/main.js` to start the daemon on `127.0.0.1:4891`. Requires `CEREBELLUM_API_KEY` in your `.env`. The `/mcp` endpoint is unauthenticated (standard MCP clients); the `/api/*` endpoints require a `Bearer` token.
 
 ## Metadata auto-extracted per thought
 
@@ -89,6 +144,10 @@ Each captured thought is automatically classified into:
 - **Topics** — 1–3 tags
 - **Mentions** — mentioned names
 - **Action items** — implied next steps
+
+## Cost
+
+~$0.10–0.30/month at 20 thoughts/day (embeddings + classification). Gatekeeper and Operator LLM calls add marginal cost — both default to `claude-sonnet-4-6` but work well with `openai/gpt-4o-mini` if you want to keep costs near zero.
 
 ## License
 

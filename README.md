@@ -37,12 +37,14 @@ alias memo="node --import tsx/esm /path/to/cerebellum/src/cli/index.ts"
 memo "first thought"    # you're in
 ```
 
+The [`prompts/`](./prompts/) directory has five ready-to-use prompts for seeding the brain: memory migration, second brain migration, a personalized capture discovery interview, quick capture templates, and a weekly review ritual.
+
 ## Architecture
 
 ```
 memo "thought"
     ↓
-Weaver  (buffer · synthesis · TTL)
+Operator  (buffer · synthesis · TTL)
     ↓
 Gatekeeper  (quality · contradiction · adversarial review)
     ↓
@@ -55,9 +57,9 @@ semantic_search / list_recent / stats / capture  ←  any MCP client
 
 ---
 
-## Weaver _(working name — suggestions genuinely welcome)_
+## Operator _(Weaver, Mentat, Curator... still deciding — suggestions welcome)_
 
-Every capture lands in a short-term buffer before it touches the database. The Weaver is an LLM crawling that buffer — picking apart fragments, finding the threads that belong together, synthesizing what can be synthesized. Think less pipeline step, more something alive in the web.
+Every capture lands in a short-term buffer before it touches the database. The Operator is an LLM crawling that buffer — picking apart fragments, finding the threads that belong together, synthesizing what can be synthesized. Think less pipeline step, more something alive in the web.
 
 Three calls:
 
@@ -67,13 +69,13 @@ Three calls:
 
 Three half-baked notes about a decision you're wrestling with become one coherent insight by the time they reach the next layer. The fragments never reach the database. The buffer runs on a serialized async chain — concurrent captures don't corrupt each other, and TTL expiry never silently discards. If synthesis fails, entries route individually. Nothing gets lost.
 
-Use `memo --axiom "..."` to skip the Weaver entirely and send something straight to the queue as an axiom.
+Use `memo --axiom "..."` to skip the Operator entirely and send something straight to the queue as an axiom.
 
 ---
 
 ## Gatekeeper
 
-What survives the Weaver hits a second LLM evaluation.
+What survives the Operator hits a second LLM evaluation.
 
 The Gatekeeper scores each thought **1–10** (Noise → Insight-grade), runs an adversarial note on borderline items (scores 4–7), checks for contradictions against everything already in the database, and flags **veto violations** — captures that would contradict a directive you've already marked inviolable.
 
@@ -83,7 +85,7 @@ Output: a recommendation (`keep` · `drop` · `improve` · `axiom`) and a reform
 
 An _axiom_ is a permanent directive — carved in stone, not written on a whiteboard. Once approved, it doesn't just sit in the database differently; the Gatekeeper actively flags any future capture that would contradict it.
 
-`memo --axiom "never ship without a review queue"` — skips the Weaver, hits your queue marked as axiom, and once you approve it, it's enforced from that point forward. A first-class thought.
+`memo --axiom "never ship without a review queue"` — skips the Operator, hits your queue marked as axiom, and once you approve it, it's enforced from that point forward. A first-class thought.
 
 ---
 
@@ -101,7 +103,7 @@ Nothing reaches the database without your sign-off. `memo review` walks you thro
 | Embeddings | `openai/text-embedding-3-small` via OpenRouter |
 | Classifier | `openai/gpt-4o-mini` via OpenRouter (configurable) |
 | Gatekeeper | `anthropic/claude-sonnet-4-6` via OpenRouter (configurable) |
-| Weaver | `anthropic/claude-sonnet-4-6` via OpenRouter (configurable) |
+| Operator | `anthropic/claude-sonnet-4-6` via OpenRouter (configurable) |
 | Protocol | MCP (`@modelcontextprotocol/sdk`) |
 | HTTP daemon | Express on `127.0.0.1:4891` |
 | CLI | Node.js + TypeScript (`memo` alias) |
@@ -120,8 +122,8 @@ Also available over HTTP at `POST /mcp` when the daemon is running.
 ## CLI
 
 ```bash
-memo "thought"                        # capture → Weaver → GK queue
-memo --axiom "directive"              # bypass Weaver, queue as axiom
+memo "thought"                        # capture → Operator → GK queue
+memo --axiom "directive"              # bypass Operator, queue as axiom
 memo review                           # interactive GK queue review
 memo web                              # inspect/force-synthesise/discard held entries
 memo search "what was I thinking"     # semantic search
@@ -165,7 +167,7 @@ alias memo="node --import tsx/esm /path/to/cerebellum/src/cli/index.ts"
 
 ## Cost
 
-~$0.10–0.30/month at 20 thoughts/day. Weaver and Gatekeeper both default to `claude-sonnet-4-6` but work well with `openai/gpt-4o-mini` if you want to keep it near zero.
+~$0.10–0.30/month at 20 thoughts/day. Operator and Gatekeeper both default to `claude-sonnet-4-6` but work well with `openai/gpt-4o-mini` if you want to keep it near zero.
 
 ## License
 

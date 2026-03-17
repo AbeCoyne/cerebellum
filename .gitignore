@@ -3,6 +3,10 @@ dist/
 .env
 *.env.local
 HANDOFF.md
+TASKS.todo
+RESEARCH.md
+WORKFLOW.md
+docs/plans/
 .DS_Store
 *.js.map
 

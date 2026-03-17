@@ -11,31 +11,87 @@
 
 ---
 
-Capture thoughts from anywhere. Retrieve them semantically. Every AI tool you use — Claude, Cursor, VS Code — connects to the same brain via a single MCP server.
+A personal, database-backed memory system that speaks MCP. Any AI tool — Claude, Cursor, ChatGPT, whatever ships next year — queries the same memory store without integration work. _One protocol, every engine._
 
-## How it works
+Raw thoughts don't go straight to the database. Three layers stand between capture and storage.
 
-Thoughts pass through three stages before reaching the database:
+## Quickstart
+
+```bash
+git clone https://github.com/jj-valentine/cerebellum
+cd cerebellum && npm install
+cp .env.example .env        # fill in SUPABASE_URL, SUPABASE_SERVICE_KEY, OPENROUTER_API_KEY
+```
+
+Paste `schema/schema.sql` into the Supabase SQL Editor and run it. Then:
+
+```bash
+npm run build
+claude mcp add --transport stdio --scope user cerebellum -- node /path/to/dist/mcp/server.js
+
+# Add to your shell config:
+alias memo="node --import tsx/esm /path/to/cerebellum/src/cli/index.ts"
+```
+
+```bash
+memo "first thought"    # you're in
+```
+
+## Architecture
 
 ```
 memo "thought"
     ↓
-Operator  (buffer + TTL synthesis)
-  holds related thoughts, synthesises clusters before they expire
+Weaver  (buffer · synthesis · TTL)
     ↓
-Gatekeeper  (quality + contradiction scoring)
-  scores 1–10, detects contradictions, adversarial review for borderline items
+Gatekeeper  (quality · contradiction · adversarial review)
     ↓
-memo review  (interactive approval)
+memo review  (you have final say)
     ↓
-embed (text-embedding-3-small)  +  classify (claude-sonnet-4-6)
-    ↓
-Postgres + pgvector (Supabase)
+embed + classify → Postgres + pgvector (Supabase)
     ↓
 semantic_search / list_recent / stats / capture  ←  any MCP client
 ```
 
-Use `memo --axiom "directive"` to bypass the Operator and queue a thought directly as an axiom.
+---
+
+## Weaver _(working name — suggestions genuinely welcome)_
+
+Every capture lands in a short-term buffer before it touches the database. The Weaver is an LLM crawling that buffer — picking apart fragments, finding the threads that belong together, synthesizing what can be synthesized. Think less pipeline step, more something alive in the web.
+
+Three calls:
+
+- **`pass-through`** — complete, self-contained thought. Route it.
+- **`hold`** — low-signal fragment. Sit. Wait for the rest.
+- **`synthesise`** — two or more buffered entries share a theme. Collapse them into one stronger thought. Discard the fragments.
+
+Three half-baked notes about a decision you're wrestling with become one coherent insight by the time they reach the next layer. The fragments never reach the database. The buffer runs on a serialized async chain — concurrent captures don't corrupt each other, and TTL expiry never silently discards. If synthesis fails, entries route individually. Nothing gets lost.
+
+Use `memo --axiom "..."` to skip the Weaver entirely and send something straight to the queue as an axiom.
+
+---
+
+## Gatekeeper
+
+What survives the Weaver hits a second LLM evaluation.
+
+The Gatekeeper scores each thought **1–10** (Noise → Insight-grade), runs an adversarial note on borderline items (scores 4–7), checks for contradictions against everything already in the database, and flags **veto violations** — captures that would contradict a directive you've already marked inviolable.
+
+Output: a recommendation (`keep` · `drop` · `improve` · `axiom`) and a reformulation if it thinks the thought can be sharper.
+
+### Axioms
+
+An _axiom_ is a permanent directive — carved in stone, not written on a whiteboard. Once approved, it doesn't just sit in the database differently; the Gatekeeper actively flags any future capture that would contradict it.
+
+`memo --axiom "never ship without a review queue"` — skips the Weaver, hits your queue marked as axiom, and once you approve it, it's enforced from that point forward. A first-class thought.
+
+---
+
+## You _(the Architect)_
+
+Nothing reaches the database without your sign-off. `memo review` walks you through the queue one entry at a time: score, analysis, the skeptic's note if it's borderline, suggested reformulation. Keep it, drop it, edit it, or promote it to axiom. You have final say on everything.
+
+---
 
 ## Stack
 
@@ -45,27 +101,10 @@ Use `memo --axiom "directive"` to bypass the Operator and queue a thought direct
 | Embeddings | `openai/text-embedding-3-small` via OpenRouter |
 | Classifier | `openai/gpt-4o-mini` via OpenRouter (configurable) |
 | Gatekeeper | `anthropic/claude-sonnet-4-6` via OpenRouter (configurable) |
-| Operator | `anthropic/claude-sonnet-4-6` via OpenRouter (configurable) |
+| Weaver | `anthropic/claude-sonnet-4-6` via OpenRouter (configurable) |
 | Protocol | MCP (`@modelcontextprotocol/sdk`) |
 | HTTP daemon | Express on `127.0.0.1:4891` |
 | CLI | Node.js + TypeScript (`memo` alias) |
-
-## Operator
-
-The Operator is a short-term buffer. Rather than sending every thought straight to the Gatekeeper, it holds them in `~/.cerebellum/web.json` and looks for clusters worth synthesising. When related thoughts accumulate it collapses them into a single, richer entry. Thoughts that never cluster are passed through individually when their TTL expires (7 days for personal captures, 24h for operational ones).
-
-Three decisions: **pass-through**, **hold** (wait for more), **synthesise** (merge cluster → single thought).
-
-## Gatekeeper
-
-The Gatekeeper scores every thought before it enters the database:
-
-- **Quality score** 1–10 (Noise → Insight-grade)
-- **Recommendation** — `keep` · `drop` · `axiom` · `improve`
-- **Contradiction detection** — soft / hard / veto_violation against existing thoughts
-- **Adversarial review** — for borderline scores (4–7), a second LLM pass checks the reformulation
-
-Evaluated entries land in `~/.cerebellum/queue.json`. Run `memo review` to approve or reject them interactively.
 
 ## MCP Tools
 
@@ -80,14 +119,9 @@ Also available over HTTP at `POST /mcp` when the daemon is running.
 
 ## CLI
 
-Set up the alias once:
 ```bash
-alias memo="node --import tsx/esm /path/to/cerebellum/src/cli/index.ts"
-```
-
-```bash
-memo "thought"                        # capture → Operator → GK queue
-memo --axiom "directive"              # bypass Operator, queue as axiom
+memo "thought"                        # capture → Weaver → GK queue
+memo --axiom "directive"              # bypass Weaver, queue as axiom
 memo review                           # interactive GK queue review
 memo web                              # inspect/force-synthesise/discard held entries
 memo search "what was I thinking"     # semantic search
@@ -98,47 +132,31 @@ memo seed --dry-run <file.json>       # preview without writing
 memo seed --undo                      # delete all seeded thoughts
 ```
 
-## Setup
+## Full Setup
 
-**1. Clone and install**
-```bash
-git clone https://github.com/jj-valentine/cerebellum
-cd cerebellum
-npm install
-```
-
-**2. Configure environment**
+**Environment**
 ```bash
 cp .env.example .env
-# Fill in SUPABASE_URL, SUPABASE_SERVICE_KEY, OPENROUTER_API_KEY
-# Generate CEREBELLUM_API_KEY with: openssl rand -hex 32
+# Required: SUPABASE_URL, SUPABASE_SERVICE_KEY, OPENROUTER_API_KEY
+# HTTP daemon: generate CEREBELLUM_API_KEY with: openssl rand -hex 32
 ```
 
-**3. Run schema in Supabase SQL editor**
-```
-Copy contents of schema/schema.sql → paste into Supabase SQL Editor → Run
-```
+**Schema** — paste `schema/schema.sql` into the Supabase SQL Editor and run it.
 
-**4. Build and register MCP server**
+**MCP server**
 ```bash
 npm run build
 claude mcp add --transport stdio --scope user cerebellum -- node /path/to/dist/mcp/server.js
 ```
 
-**5. Set up CLI alias**
-
-Add to your shell config (`~/.zshrc`, `~/.bashrc`, etc.):
+**CLI alias** — add to your shell config:
 ```bash
 alias memo="node --import tsx/esm /path/to/cerebellum/src/cli/index.ts"
 ```
 
-**6. (Optional) HTTP daemon**
-
-Run `npm run build && node dist/http/main.js` to start the daemon on `127.0.0.1:4891`. Requires `CEREBELLUM_API_KEY` in your `.env`. The `/mcp` endpoint is unauthenticated (standard MCP clients); the `/api/*` endpoints require a `Bearer` token.
+**HTTP daemon** _(optional)_ — `node dist/http/main.js` starts on `127.0.0.1:4891`. The `/mcp` endpoint is unauthenticated; `/api/*` requires a `Bearer` token. This is what makes external capture surfaces (browser extensions, editor plugins, voice input) possible.
 
 ## Metadata auto-extracted per thought
-
-Each captured thought is automatically classified into:
 
 - **Type** — `observation` · `task` · `idea` · `reference` · `people` · `preference`
 - **Topics** — 1–3 tags
@@ -147,7 +165,7 @@ Each captured thought is automatically classified into:
 
 ## Cost
 
-~$0.10–0.30/month at 20 thoughts/day (embeddings + classification). Gatekeeper and Operator LLM calls add marginal cost — both default to `claude-sonnet-4-6` but work well with `openai/gpt-4o-mini` if you want to keep costs near zero.
+~$0.10–0.30/month at 20 thoughts/day. Weaver and Gatekeeper both default to `claude-sonnet-4-6` but work well with `openai/gpt-4o-mini` if you want to keep it near zero.
 
 ## License
 

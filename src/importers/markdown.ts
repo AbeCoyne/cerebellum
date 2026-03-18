@@ -8,11 +8,14 @@ import type { SeedEntry } from '../cli/seed.js';
 export function parseMarkdown(content: string): SeedEntry[] {
   const entries: SeedEntry[] = [];
   let buffer: string[] = [];
+  let pendingHeading: string | null = null;
 
   function flush(): void {
     const text = buffer.join(' ').replace(/\s+/g, ' ').trim();
     if (text.length > 10) entries.push({ content: text });
     buffer = [];
+    // pendingHeading is intentionally NOT reset here — it persists until consumed
+    // by following content, or discarded when the next heading replaces it.
   }
 
   for (const raw of content.split('\n')) {
@@ -24,12 +27,20 @@ export function parseMarkdown(content: string): SeedEntry[] {
     if (line.startsWith('#')) {
       flush();
       const text = line.replace(/^#+\s*/, '').trim();
-      if (text) buffer.push(text);
+      pendingHeading = text || null;
     } else if (/^[-*]\s/.test(line)) {
       flush();
       const text = line.replace(/^[-*]\s+/, '').replace(/\*\*/g, '').trim();
-      if (text) buffer.push(text);
+      if (text) {
+        if (pendingHeading) buffer.push(pendingHeading);
+        pendingHeading = null;
+        buffer.push(text);
+      }
     } else {
+      if (pendingHeading && buffer.length === 0) {
+        buffer.push(pendingHeading);
+        pendingHeading = null;
+      }
       buffer.push(line);
     }
   }

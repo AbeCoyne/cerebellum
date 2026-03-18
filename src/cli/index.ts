@@ -47,7 +47,7 @@ cerebellum — personal second brain CLI
   memo search "query"              Semantic search
   memo recent                      List recent thoughts (--days N  --limit N)
   memo stats                       Show thinking patterns
-  memo seed <file.json>            Batch capture from JSON (direct to DB)
+  memo seed <file.json>            Batch capture from JSON (via SEED_PIPELINE)
   memo seed --dry-run <file.json>  Preview entries without writing
   memo seed --undo                 Delete all seeded thoughts
   memo import --claude [path]      Import CLAUDE.md via LLM distillation

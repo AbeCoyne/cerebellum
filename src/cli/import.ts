@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync, existsSync } from 'fs';
+import { readFileSync, readdirSync, existsSync, Dirent } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
 import { cfg } from '../config.js';
@@ -48,8 +48,9 @@ function discoverFiles(platform: Platform): string[] {
       for (const slug of readdirSync(projectsDir)) {
         const memDir = join(projectsDir, slug, 'memory');
         if (!existsSync(memDir)) continue;
-        for (const file of readdirSync(memDir)) {
-          if (file.endsWith('.md')) files.push(join(memDir, file));
+        for (const dirent of readdirSync(memDir, { withFileTypes: true }) as Dirent[]) {
+          if (dirent.isFile() && dirent.name.endsWith('.md'))
+            files.push(join(memDir, dirent.name));
         }
       }
       return files;
@@ -107,7 +108,7 @@ export async function cmd_import(opts: ImportOptions): Promise<void> {
   }
 
   // ── dedup guard ─────────────────────────────────────────────────────────────
-  if (!force) {
+  if (!force && !dryRun) {
     const prefix        = `import:${platform}`;
     const existingDb    = await countBySource(prefix);
     const existingQueue = readQueue().filter(e => e.source.startsWith(prefix)).length;

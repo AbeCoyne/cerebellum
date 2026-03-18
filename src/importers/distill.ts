@@ -1,6 +1,10 @@
 import { cfg } from '../config.js';
 import type { SeedEntry } from '../cli/seed.js';
 
+const VALID_TYPES = new Set<string>([
+  'preference', 'axiom', 'reference', 'observation', 'idea', 'people',
+]);
+
 const DISTILL_SYSTEM_PROMPT = `You extract discrete, storable personal preferences, directives, and facts from AI assistant configuration files. Return ONLY a valid JSON object: { "entries": [...] }.
 
 Each entry object must have:
@@ -37,7 +41,7 @@ export async function distillFile(content: string, platformLabel: string): Promi
         { role: 'system', content: DISTILL_SYSTEM_PROMPT },
         { role: 'user',   content: `[Platform: ${platformLabel}]\n\n${truncated}` },
       ],
-      max_tokens:      4096,
+      max_tokens:      16_384,
       temperature:     0.2,
       response_format: { type: 'json_object' },
     }),
@@ -73,6 +77,6 @@ export async function distillFile(content: string, platformLabel: string): Promi
     )
     .map(e => ({
       content: (e.content as string).trim(),
-      type:    e.type as SeedEntry['type'] | undefined,
+      type:    VALID_TYPES.has(String(e.type)) ? (e.type as SeedEntry['type']) : undefined,
     }));
 }

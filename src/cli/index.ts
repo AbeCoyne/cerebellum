@@ -218,8 +218,13 @@ if (!command || command === 'help' || command === '--help' || command === '-h') 
   const maybePath       = args[platformFlagIdx + 1];
   const explicitPath    = maybePath && !maybePath.startsWith('--') ? maybePath : undefined;
 
-  const modeArg = args.find(a => a.startsWith('--mode='));
-  const mode    = (modeArg?.split('=')[1] ?? 'distill') as 'distill' | 'parse';
+  const modeArg  = args.find(a => a.startsWith('--mode='));
+  const modeVal  = modeArg?.split('=')[1];
+  if (modeVal && modeVal !== 'distill' && modeVal !== 'parse') {
+    console.error(`Unknown --mode value: "${modeVal}". Valid values: distill, parse`);
+    process.exit(1);
+  }
+  const mode = (modeVal ?? 'distill') as 'distill' | 'parse';
 
   await cmd_import({
     platform,

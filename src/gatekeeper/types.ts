@@ -5,7 +5,7 @@ export type QueueStatus =
   | 'evaluated'    // gate ran; awaiting user review
   | 'gate-failed'; // gate call failed; user decides manually
 
-export type ContradictionSeverity = 'soft' | 'hard' | 'veto_violation';
+export type ContradictionSeverity = 'soft' | 'hard' | 'axiom_violation';
 
 export interface Contradiction {
   severity:               ContradictionSeverity;

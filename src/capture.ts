@@ -18,7 +18,7 @@ export interface CaptureResult {
  * @param content      The thought text.
  * @param source       Origin tag (cli | mcp | hook | …).
  * @param type_override  When set, overrides the LLM classifier's type assignment.
- *                       Use 'veto' for axiom captures (permanent directives).
+ *                       Use 'axiom' for permanent directive captures.
  */
 export async function captureThought(
   content:       string,
@@ -41,7 +41,7 @@ export async function captureThought(
     classifyThought(trimmed),
   ]));
 
-  // Override type if specified (e.g. axiom / veto)
+  // Override type if specified (e.g. axiom)
   if (type_override) {
     metadata.type = type_override;
   }

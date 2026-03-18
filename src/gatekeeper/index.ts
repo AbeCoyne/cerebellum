@@ -3,7 +3,7 @@ import { cfg } from '../config.js';
 import { generateEmbedding } from '../embeddings.js';
 import { searchByEmbedding } from '../db.js';
 import { GATE_SYSTEM_PROMPT, ADVERSARIAL_SYSTEM_PROMPT, buildUserMessage } from './prompt.js';
-import { updateVerdict } from './queue.js';
+import { updateVerdict, readQueue } from './queue.js';
 import type { QueueEntry, GatekeeperVerdict } from './types.js';
 
 // ─── Zod schema for gate LLM response ────────────────────────────────────────
@@ -17,7 +17,7 @@ const VerdictSchema = z.object({
   // .catch(undefined): if the LLM returns a malformed contradiction object (missing fields, nulls),
   // treat it as no contradiction rather than failing the entire verdict parse.
   contradiction:    z.object({
-    severity:               z.enum(['soft', 'hard', 'veto_violation']),
+    severity:               z.enum(['soft', 'hard', 'axiom_violation']),
     conflicting_thought_id: z.string(),
     summary:                z.string(),
   }).optional().catch(undefined),
@@ -100,7 +100,10 @@ async function adversarialNote(
 
 async function callGate(entry: QueueEntry): Promise<GatekeeperVerdict> {
   const similarThoughts = await fetchSimilarThoughts(entry.content);
-  const userMessage     = buildUserMessage(entry.content, entry.capture_reason, similarThoughts);
+  const queueItems      = readQueue()
+    .filter(e => e.id !== entry.id)
+    .map(e => ({ id: e.id, content: e.content }));
+  const userMessage     = buildUserMessage(entry.content, entry.capture_reason, similarThoughts, queueItems);
 
   const raw  = await openrouterChat(cfg.gate.model, GATE_SYSTEM_PROMPT, userMessage);
   const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();

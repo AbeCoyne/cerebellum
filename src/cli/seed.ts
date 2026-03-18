@@ -1,6 +1,9 @@
 import { readFileSync } from 'fs';
 import { captureThought } from '../capture.js';
+import { enqueue } from '../gatekeeper/queue.js';
+import { intake } from '../operator/index.js';
 import { deleteBySource } from '../db.js';
+import { cfg } from '../config.js';
 import type { ThoughtType } from '../types.js';
 
 export interface SeedEntry {
@@ -34,10 +37,31 @@ function parseFile(path: string): SeedEntry[] {
   return parsed as SeedEntry[];
 }
 
-async function runBatch(
+async function routeEntry(
+  entry: SeedEntry,
+  source: string,
+  pipeline: 'direct' | 'gk' | 'full',
+): Promise<string> {
+  if (pipeline === 'gk') {
+    enqueue(entry.content, source);
+    return 'queued';
+  }
+  if (pipeline === 'full') {
+    await intake(entry.content, source);
+    return 'held';
+  }
+  // 'direct'
+  const result = await captureThought(entry.content, source, entry.type);
+  return result.thought.metadata.type ?? 'stored';
+}
+
+export async function runBatch(
   entries: SeedEntry[],
   concurrency: number,
+  opts: { pipeline?: 'direct' | 'gk' | 'full'; sourcePrefix?: string } = {},
 ): Promise<{ stored: number; failed: number; errors: string[] }> {
+  const pipeline     = opts.pipeline     ?? cfg.seed.pipeline;
+  const sourcePrefix = opts.sourcePrefix ?? 'seed';
   let stored = 0;
   let failed = 0;
   const errors: string[] = [];
@@ -47,15 +71,14 @@ async function runBatch(
     const results = await Promise.allSettled(
       batch.map((entry, j) => {
         const idx = i + j;
-        const source = `seed:${entry.source_tag ?? 'unknown'}`;
-        return captureThought(entry.content, source, entry.type)
-          .then(result => {
-            stored++;
-            const preview = entry.content.length > 60
-              ? entry.content.slice(0, 57) + '...'
-              : entry.content;
-            console.log(`  [${idx + 1}/${entries.length}] ✓ ${result.thought.metadata.type} — "${preview}"`);
-          });
+        const source = `${sourcePrefix}:${entry.source_tag ?? 'unknown'}`;
+        return routeEntry(entry, source, pipeline).then(label => {
+          stored++;
+          const preview = entry.content.length > 60
+            ? entry.content.slice(0, 57) + '...'
+            : entry.content;
+          console.log(`  [${idx + 1}/${entries.length}] ✓ ${label} — "${preview}"`);
+        });
       }),
     );
 
@@ -91,6 +114,8 @@ export async function cmd_seed(filePath: string, dryRun: boolean): Promise<void>
     return;
   }
 
+  const pipelineLabel = { direct: 'direct to DB', gk: 'GK queue (memo review)', full: 'Operator → GK queue' }[cfg.seed.pipeline as string] ?? cfg.seed.pipeline;
+  console.log(`Pipeline: ${pipelineLabel}`);
   console.log(`Capturing ${entries.length} thoughts (concurrency 3)...\n`);
   const { stored, failed, errors } = await runBatch(entries, 3);
 

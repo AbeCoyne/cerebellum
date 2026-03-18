@@ -43,4 +43,17 @@ export const cfg = {
     ttlPersonalHours:    parseInt(optional_env('OPERATOR_TTL_PERSONAL_HOURS',     '168'), 10), // 7d
     ttlOperationalHours: parseInt(optional_env('OPERATOR_TTL_OPERATIONAL_HOURS',   '24'), 10), // 1d
   },
+  seed: {
+    // 'direct' — straight to DB, no quality gate (fastest, for pre-vetted batches)
+    // 'gk'     — skip Operator, land in GK queue for memo review (recommended for curated batches)
+    // 'full'   — through Operator + GK queue (for raw/uncertain batches)
+    pipeline: optional_env('SEED_PIPELINE', 'gk') as 'direct' | 'gk' | 'full',
+  },
+  import: {
+    // 'full' — through Operator + GK (default: clusters overlapping entries from multi-file imports)
+    // 'gk'   — skip Operator, land in GK queue for memo review
+    // 'direct' — straight to DB (use after --dry-run verification)
+    pipeline: optional_env('IMPORT_PIPELINE', 'full') as 'direct' | 'gk' | 'full',
+    model:    optional_env('IMPORT_MODEL', optional_env('GATE_MODEL', 'openai/gpt-4o-mini')),
+  },
 } as const;

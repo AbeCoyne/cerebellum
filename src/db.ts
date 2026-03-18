@@ -56,6 +56,16 @@ export async function listRecent(
   return (data ?? []) as Thought[];
 }
 
+export async function countBySource(sourcePrefix: string): Promise<number> {
+  const { count, error } = await supabase
+    .from('thoughts')
+    .select('*', { count: 'exact', head: true })
+    .like('source', `${sourcePrefix}%`);
+
+  if (error) throw new Error(`DB count failed: ${error.message}`);
+  return count ?? 0;
+}
+
 export async function deleteBySource(sourcePrefix: string): Promise<number> {
   const { data, error } = await supabase
     .from('thoughts')

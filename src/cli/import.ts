@@ -2,8 +2,8 @@ import { readFileSync, readdirSync, existsSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
 import { cfg } from '../config.js';
-import { countBySource } from '../db.js';
-import { deleteBySource } from '../db.js';
+import { countBySource, deleteBySource } from '../db.js';
+import { readQueue, removeEntry } from '../gatekeeper/queue.js';
 import { runBatch } from './seed.js';
 import { distillFile } from '../importers/distill.js';
 import { parseMarkdown } from '../importers/markdown.js';
@@ -92,17 +92,23 @@ export async function cmd_import(opts: ImportOptions): Promise<void> {
   if (undo) {
     const prefix = `import:${platform}`;
     console.log(`Deleting all thoughts with source starting with "${prefix}"...`);
-    const count = await deleteBySource(prefix);
-    console.log(`✓ Deleted ${count} thought${count !== 1 ? 's' : ''}.`);
+    const dbCount    = await deleteBySource(prefix);
+    const queueItems = readQueue().filter(e => e.source.startsWith(prefix));
+    for (const e of queueItems) removeEntry(e.id);
+    const total = dbCount + queueItems.length;
+    console.log(`✓ Deleted ${total} thought${total !== 1 ? 's' : ''} (${dbCount} from DB, ${queueItems.length} from queue).`);
     return;
   }
 
   // ── dedup guard ─────────────────────────────────────────────────────────────
   if (!force) {
-    const existing = await countBySource(`import:${platform}`);
+    const prefix        = `import:${platform}`;
+    const existingDb    = await countBySource(prefix);
+    const existingQueue = readQueue().filter(e => e.source.startsWith(prefix)).length;
+    const existing      = existingDb + existingQueue;
     if (existing > 0) {
       console.error(
-        `⚠  Found ${existing} existing import:${platform} thought${existing !== 1 ? 's' : ''}.\n` +
+        `⚠  Found ${existing} existing import:${platform} thought${existing !== 1 ? 's' : ''} (${existingDb} in DB, ${existingQueue} in queue).\n` +
         `   Re-importing will create duplicates.\n` +
         `   Use --undo to clear first, or --force to proceed anyway.`,
       );

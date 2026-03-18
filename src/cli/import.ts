@@ -90,10 +90,16 @@ export async function cmd_import(opts: ImportOptions): Promise<void> {
 
   // ── undo ────────────────────────────────────────────────────────────────────
   if (undo) {
-    const prefix = `import:${platform}`;
-    console.log(`Deleting all thoughts with source starting with "${prefix}"...`);
-    const dbCount    = await deleteBySource(prefix);
+    const prefix     = `import:${platform}`;
     const queueItems = readQueue().filter(e => e.source.startsWith(prefix));
+    if (dryRun) {
+      const existingDb = await countBySource(prefix);
+      const total      = existingDb + queueItems.length;
+      console.log(`Would delete ${total} thought${total !== 1 ? 's' : ''} (${existingDb} in DB, ${queueItems.length} in queue). Remove --dry-run to execute.`);
+      return;
+    }
+    console.log(`Deleting all thoughts with source starting with "${prefix}"...`);
+    const dbCount = await deleteBySource(prefix);
     for (const e of queueItems) removeEntry(e.id);
     const total = dbCount + queueItems.length;
     console.log(`✓ Deleted ${total} thought${total !== 1 ? 's' : ''} (${dbCount} from DB, ${queueItems.length} from queue).`);

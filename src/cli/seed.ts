@@ -43,7 +43,7 @@ async function routeEntry(
   pipeline: 'direct' | 'gk' | 'full',
 ): Promise<string> {
   if (pipeline === 'gk') {
-    enqueue(entry.content, source);
+    enqueue(entry.content, source, undefined, entry.type === 'axiom');
     return 'queued';
   }
   if (pipeline === 'full') {

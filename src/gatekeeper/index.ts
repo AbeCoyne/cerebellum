@@ -102,6 +102,7 @@ async function callGate(entry: QueueEntry): Promise<GatekeeperVerdict> {
   const similarThoughts = await fetchSimilarThoughts(entry.content);
   const queueItems      = readQueue()
     .filter(e => e.id !== entry.id)
+    .slice(0, 20)
     .map(e => ({ id: e.id, content: e.content }));
   const userMessage     = buildUserMessage(entry.content, entry.capture_reason, similarThoughts, queueItems);
 

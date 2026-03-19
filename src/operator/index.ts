@@ -23,6 +23,18 @@ type OperatorDecision = z.infer<typeof DecisionSchema>;
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
+/**
+ * If all entries in a synthesis share the same 'import:*' source, inherit it.
+ * Mixed sources (e.g. import:claude + cli) fall back to 'operator:synthesis'
+ * so that --undo for a specific platform doesn't accidentally delete user thoughts.
+ */
+function deriveSynthesisSource(entries: WebEntry[]): string {
+  const sources = [...new Set(entries.map(e => e.source))];
+  return sources.length === 1 && sources[0].startsWith('import:')
+    ? sources[0]
+    : 'operator:synthesis';
+}
+
 /** enqueue + fire-and-forget gate evaluation (same pattern as CLI/MCP paths). */
 function enqueueAndEval(content: string, source: string, capture_reason?: string): void {
   const gkEntry = enqueue(content, source, capture_reason);
@@ -97,8 +109,9 @@ async function processExpired(): Promise<void> {
         const currentWeb = readWeb();
         const toRemove = candidateIds.filter(id => currentWeb.some(e => e.id === id));
         if (toRemove.length > 0) {
+          const candidateEntries = toRemove.map(id => currentWeb.find(e => e.id === id)!);
           removeEntries(toRemove);
-          enqueueAndEval(decision.synthesis, 'operator:ttl-synthesis');
+          enqueueAndEval(decision.synthesis, deriveSynthesisSource(candidateEntries));
           // Route non-targeted expired entries to GK individually
           // Filter remaining against currentWeb — some may have been handled by `memo web`
           const remaining = expired.filter(e => !targetSet.has(e.id) && currentWeb.some(w => w.id === e.id));
@@ -169,8 +182,9 @@ async function _evaluateOne(entry: WebEntry): Promise<void> {
       freshWeb.some(e => e.id === id),
     );
     if (toRemove.length === 0) return; // all targets already handled
+    const candidateEntries = toRemove.map(id => freshWeb.find(e => e.id === id)!);
     removeEntries(toRemove);
-    enqueueAndEval(decision.synthesis, 'operator:synthesis');
+    enqueueAndEval(decision.synthesis, deriveSynthesisSource(candidateEntries));
   }
 }
 

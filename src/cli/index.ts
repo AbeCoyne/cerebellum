@@ -23,6 +23,7 @@ import { evaluate } from '../gatekeeper/index.js';
 import { runReview } from '../gatekeeper/review.js';
 import { intake } from '../operator/index.js';
 import { cmd_seed, cmd_seed_undo } from './seed.js';
+import { cmd_import } from './import.js';
 import { runWebReview } from './web.js';
 
 const args    = process.argv.slice(2);
@@ -46,9 +47,16 @@ cerebellum — personal second brain CLI
   memo search "query"              Semantic search
   memo recent                      List recent thoughts (--days N  --limit N)
   memo stats                       Show thinking patterns
-  memo seed <file.json>            Batch capture from JSON (direct to DB)
+  memo seed <file.json>            Batch capture from JSON (via SEED_PIPELINE)
   memo seed --dry-run <file.json>  Preview entries without writing
   memo seed --undo                 Delete all seeded thoughts
+  memo import --claude [path]      Import CLAUDE.md via LLM distillation
+  memo import --cursor [path]      Import .cursorrules / CURSOR.md
+  memo import --gemini [path]      Import GEMINI.md
+  memo import --memory [path]      Import Claude memory notes
+  memo import --dry-run --<platform>   Preview without writing
+  memo import --undo --<platform>      Delete all import:<platform> thoughts
+  memo import --force --<platform>     Bypass dedup guard
   memo help                        Show this message
 `.trim());
 }
@@ -194,6 +202,38 @@ if (!command || command === 'help' || command === '--help' || command === '-h') 
       process.exit(1);
     }
   }
+
+} else if (command === 'import') {
+  const platforms = ['claude', 'cursor', 'gemini', 'memory'] as const;
+  type Platform = typeof platforms[number];
+
+  const platform = platforms.find(p => args.includes(`--${p}`));
+  if (!platform) {
+    console.error('Usage: memo import --<platform> [path]\nPlatforms: --claude  --cursor  --gemini  --memory');
+    process.exit(1);
+  }
+
+  // Explicit path: value after the --platform flag, if it doesn't start with '--'
+  const platformFlagIdx = args.indexOf(`--${platform}`);
+  const maybePath       = args[platformFlagIdx + 1];
+  const explicitPath    = maybePath && !maybePath.startsWith('--') ? maybePath : undefined;
+
+  const modeArg  = args.find(a => a.startsWith('--mode='));
+  const modeVal  = modeArg?.split('=')[1];
+  if (modeVal && modeVal !== 'distill' && modeVal !== 'parse') {
+    console.error(`Unknown --mode value: "${modeVal}". Valid values: distill, parse`);
+    process.exit(1);
+  }
+  const mode = (modeVal ?? 'distill') as 'distill' | 'parse';
+
+  await cmd_import({
+    platform,
+    explicitPath,
+    mode,
+    dryRun: args.includes('--dry-run'),
+    undo:   args.includes('--undo'),
+    force:  args.includes('--force'),
+  });
 
 } else if (command === '--axiom') {
   const text = args.slice(1).join(' ');

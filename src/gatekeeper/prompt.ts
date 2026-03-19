@@ -55,18 +55,26 @@ When a thought scores below 7 and reformulation is possible, recast it as the hi
 4. Process requirement — "Always X before Y" — medium impact
 5. Scope guard — "Only X if [condition]" — medium impact
 
+## Queue Conflict Detection
+
+You may receive a list of other items currently pending in the queue (not yet stored). Check them for:
+- Near-duplicates (same claim, similar specificity) — mention in analysis, recommend drop or improve
+- Contradictions (direct logical conflict) — mention in analysis with severity (soft/hard), recommend drop or improve
+
+Do not use the structured contradiction field for queue items — they have no DB id. Flag conflicts in your analysis text instead (e.g. "Contradicts queue item [queue:uuid]: ...").
+
 ## Contradiction Detection
 
 You will receive up to 5 semantically similar existing thoughts. Check whether the new thought:
 - Directly contradicts any existing thought
-- Contradicts a thought with type=veto (this is a AXIOM VIOLATION — highest severity)
+- Contradicts a thought with type=axiom (this is an AXIOM VIOLATION — highest severity)
 - Supersedes or updates an existing thought
 - Is a near-duplicate (same claim, same level of specificity)
 
 Severity levels:
 - "soft": directional shift — the user's view may have evolved
 - "hard": direct logical contradiction — flag prominently
-- "veto_violation": new thought contradicts an existing veto/axiom — HIGHEST severity
+- "axiom_violation": new thought contradicts an existing axiom — HIGHEST severity
 
 ## Response Format
 
@@ -79,7 +87,7 @@ Return ONLY valid JSON with this exact shape:
   "recommendation": "<keep|drop|axiom|improve>",
   "reformulation": "<stronger version of the thought — omit if score >= 8 or if not applicable>",
   "contradiction": {
-    "severity": "<soft|hard|veto_violation>",
+    "severity": "<soft|hard|axiom_violation>",
     "conflicting_thought_id": "<uuid>",
     "summary": "<1-2 sentences describing the conflict>"
   }
@@ -100,6 +108,7 @@ export function buildUserMessage(
   content:         string,
   captureReason:   string | undefined,
   similarThoughts: Array<{ id: string; content: string; type: string }>,
+  queueItems:      Array<{ id: string; content: string }> = [],
 ): string {
   const lines: string[] = [];
 
@@ -118,6 +127,13 @@ export function buildUserMessage(
     }
   } else {
     lines.push('\nSIMILAR EXISTING THOUGHTS: none (corpus may be empty)');
+  }
+
+  if (queueItems.length > 0) {
+    lines.push('\nOTHER ITEMS PENDING IN QUEUE (not yet stored — flag near-duplicates in your analysis):');
+    for (const q of queueItems) {
+      lines.push(`[queue:${q.id}] ${q.content}`);
+    }
   }
 
   return lines.join('\n');

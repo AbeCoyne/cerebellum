@@ -5,7 +5,7 @@ export type ThoughtType =
   | 'reference'
   | 'people'
   | 'preference'
-  | 'veto';         // axiom — permanent directive; confidence stays at 1.0
+  | 'axiom';        // permanent directive; confidence stays at 1.0
 
 export interface ThoughtMetadata {
   type:         ThoughtType;

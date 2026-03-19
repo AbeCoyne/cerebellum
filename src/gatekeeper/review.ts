@@ -36,7 +36,7 @@ function displayEntry(entry: QueueEntry, index: number, total: number): void {
   // Contradiction (highest priority — show first)
   if (verdict.contradiction) {
     const { severity, summary } = verdict.contradiction;
-    if (severity === 'veto_violation') {
+    if (severity === 'axiom_violation') {
       console.log(`  🚨 AXIOM VIOLATION: ${summary}`);
     } else if (severity === 'hard') {
       console.log(`  ⚠  CONTRADICTION (hard): ${summary}`);
@@ -164,7 +164,7 @@ async function resolveEntry(
         const content = current.verdict?.reformulation
           ? await _offerReformulation(current.verdict.reformulation, current.content)
           : current.content;
-        await captureThought(content, current.source, 'veto');
+        await captureThought(content, current.source, 'axiom');
         console.log('  ✓ Stored as axiom (permanent directive, confidence: 1.0).');
         removeEntry(current.id);
         return true;
@@ -182,7 +182,7 @@ async function resolveEntry(
         if (!result) {
           console.log('  ✓ Discarded.');
         } else {
-          await captureThought(result.content, current.source, result.is_axiom ? 'veto' : undefined);
+          await captureThought(result.content, current.source, result.is_axiom ? 'axiom' : undefined);
           console.log(result.is_axiom ? '  ✓ Stored as axiom.' : '  ✓ Stored.');
         }
         removeEntry(current.id);

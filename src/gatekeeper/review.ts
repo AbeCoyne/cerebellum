@@ -2,6 +2,7 @@ import { select, input } from '@inquirer/prompts';
 import { readQueue, removeEntry } from './queue.js';
 import { evaluate } from './index.js';
 import { captureThought } from '../capture.js';
+import { keypress } from '../cli/keypress.js';
 import type { QueueEntry } from './types.js';
 
 // ─── display helpers ──────────────────────────────────────────────────────────
@@ -85,47 +86,52 @@ async function runEditLoop(
   const action = await select({
     message: 'What to do with the edited version?',
     choices: [
-      { name: '✓ Keep',  value: 'keep'  },
-      { name: '★ Axiom', value: 'axiom' },
-      { name: '✗ Drop',  value: 'drop'  },
+      { name: '✓ Keep (k)',    value: 'keep'   },
+      { name: '★ Axiom (a)',   value: 'axiom'  },
+      { name: '✗ Drop (d)',    value: 'drop'   },
+      { name: '← Back (Esc)', value: 'cancel' },
     ],
   });
 
-  if (action === 'keep')  return { content: edited.trim(), is_axiom: false };
-  if (action === 'axiom') return { content: edited.trim(), is_axiom: true  };
+  if (action === 'keep')   return { content: edited.trim(), is_axiom: false };
+  if (action === 'axiom')  return { content: edited.trim(), is_axiom: true  };
+  if (action === 'cancel') return 'cancel';
   return null; // drop
 }
 
 // ─── resolve one entry ────────────────────────────────────────────────────────
 
 function buildChoices(entry: QueueEntry) {
+  const quit = { key: 'q', label: 'Quit', value: 'quit' as const };
   return entry.status === 'gate-failed'
     ? [
-        { name: '↺ Retry gate', value: 'retry' },
-        { name: '✓ Keep as-is', value: 'keep'  },
-        { name: '✎ Edit',       value: 'edit'  },
-        { name: '★ Axiom',      value: 'axiom' },
-        { name: '✗ Drop',       value: 'drop'  },
-        { name: '→ Skip',       value: 'skip'  },
+        { key: 'r', label: 'Retry', value: 'retry' as const },
+        { key: 'k', label: 'Keep',  value: 'keep'  as const },
+        { key: 'e', label: 'Edit',  value: 'edit'  as const },
+        { key: 'a', label: 'Axiom', value: 'axiom' as const },
+        { key: 'd', label: 'Drop',  value: 'drop'  as const },
+        { key: 's', label: 'Skip',  value: 'skip'  as const },
+        quit,
       ]
     : [
-        { name: '✓ Keep',  value: 'keep'  },
-        { name: '✗ Drop',  value: 'drop'  },
-        { name: '★ Axiom', value: 'axiom' },
-        { name: '✎ Edit',  value: 'edit'  },
-        { name: '→ Skip',  value: 'skip'  },
+        { key: 'k', label: 'Keep',  value: 'keep'  as const },
+        { key: 'd', label: 'Drop',  value: 'drop'  as const },
+        { key: 'a', label: 'Axiom', value: 'axiom' as const },
+        { key: 'e', label: 'Edit',  value: 'edit'  as const },
+        { key: 's', label: 'Skip',  value: 'skip'  as const },
+        quit,
       ];
 }
 
 /**
  * Returns true if the entry was resolved (removed from queue),
- * false if skipped.
+ * false if skipped, or 'quit' to break out of the review loop.
  */
 async function resolveEntry(
   entry: QueueEntry,
   index: number,
   total: number,
-): Promise<boolean> {
+): Promise<boolean | 'quit'> {
   let current = entry;
 
   while (true) {
@@ -134,7 +140,7 @@ async function resolveEntry(
     // Only true-pending entries (still evaluating) get silently skipped
     if (current.status === 'pending') return false;
 
-    const choice = await select({ message: 'Decision:', choices: buildChoices(current) });
+    const choice = await keypress('Decision:', buildChoices(current));
 
     switch (choice) {
 
@@ -154,6 +160,7 @@ async function resolveEntry(
         const content = current.verdict?.reformulation
           ? await _offerReformulation(current.verdict.reformulation, current.content)
           : current.content;
+        if (content === 'back') continue;
         await captureThought(content, current.source);
         console.log('  ✓ Stored.');
         removeEntry(current.id);
@@ -164,6 +171,7 @@ async function resolveEntry(
         const content = current.verdict?.reformulation
           ? await _offerReformulation(current.verdict.reformulation, current.content)
           : current.content;
+        if (content === 'back') continue;
         await captureThought(content, current.source, 'axiom');
         console.log('  ✓ Stored as axiom (permanent directive, confidence: 1.0).');
         removeEntry(current.id);
@@ -189,6 +197,9 @@ async function resolveEntry(
         return true;
       }
 
+      case 'quit':
+        return 'quit';
+
       case 'skip':
       default:
         console.log('  → Skipped (stays in queue).');
@@ -197,14 +208,19 @@ async function resolveEntry(
   }
 }
 
-async function _offerReformulation(reformulation: string, original: string): Promise<string> {
+async function _offerReformulation(
+  reformulation: string,
+  original: string,
+): Promise<string | 'back'> {
   const choice = await select({
     message: 'Which version to store?',
     choices: [
       { name: `Suggested: "${reformulation}"`, value: 'reformulated' },
       { name: `Original:  "${original}"`,      value: 'original'     },
+      { name: '← Back',                        value: 'back'         },
     ],
   });
+  if (choice === 'back') return 'back';
   return choice === 'reformulated' ? reformulation : original;
 }
 
@@ -229,6 +245,7 @@ export async function runReview(): Promise<void> {
   console.log(`\n📋 Queue: ${ready.length} item${ready.length > 1 ? 's' : ''} to review`);
 
   let reviewed = 0;
+  let quit = false;
 
   for (let i = 0; i < ready.length; i++) {
     const current = readQueue();
@@ -236,6 +253,7 @@ export async function runReview(): Promise<void> {
     if (!entry) continue; // already removed
 
     const resolved = await resolveEntry(entry, i, ready.length);
+    if (resolved === 'quit') { quit = true; break; }
     if (resolved) reviewed++;
   }
 
@@ -244,7 +262,9 @@ export async function runReview(): Promise<void> {
   ).length;
 
   separator();
-  if (remaining > 0) {
+  if (quit) {
+    console.log(`✓ Reviewed ${reviewed}. Quit with ${remaining} remaining in queue.`);
+  } else if (remaining > 0) {
     console.log(`✓ Done. ${reviewed} stored  •  ${remaining} skipped (still in queue).`);
   } else {
     console.log(`✓ Queue cleared. ${reviewed} thought${reviewed !== 1 ? 's' : ''} stored.`);

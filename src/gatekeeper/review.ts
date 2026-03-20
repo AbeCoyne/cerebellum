@@ -157,22 +157,26 @@ async function resolveEntry(
       }
 
       case 'keep': {
-        const content = current.verdict?.reformulation
-          ? await _offerReformulation(current.verdict.reformulation, current.content)
-          : current.content;
-        if (content === 'back') continue;
-        await captureThought(content, current.source);
+        if (current.verdict?.reformulation) {
+          const result = await _offerReformulation(current.verdict.reformulation, current.content);
+          if (result.tag === 'back') continue;
+          await captureThought(result.value, current.source);
+        } else {
+          await captureThought(current.content, current.source);
+        }
         console.log('  ✓ Stored.');
         removeEntry(current.id);
         return true;
       }
 
       case 'axiom': {
-        const content = current.verdict?.reformulation
-          ? await _offerReformulation(current.verdict.reformulation, current.content)
-          : current.content;
-        if (content === 'back') continue;
-        await captureThought(content, current.source, 'axiom');
+        if (current.verdict?.reformulation) {
+          const result = await _offerReformulation(current.verdict.reformulation, current.content);
+          if (result.tag === 'back') continue;
+          await captureThought(result.value, current.source, 'axiom');
+        } else {
+          await captureThought(current.content, current.source, 'axiom');
+        }
         console.log('  ✓ Stored as axiom (permanent directive, confidence: 1.0).');
         removeEntry(current.id);
         return true;
@@ -208,10 +212,12 @@ async function resolveEntry(
   }
 }
 
+type ReformulationResult = { tag: 'back' } | { tag: 'content'; value: string };
+
 async function _offerReformulation(
   reformulation: string,
   original: string,
-): Promise<string | 'back'> {
+): Promise<ReformulationResult> {
   const choice = await select({
     message: 'Which version to store?',
     choices: [
@@ -220,8 +226,8 @@ async function _offerReformulation(
       { name: '← Back',                        value: 'back'         },
     ],
   });
-  if (choice === 'back') return 'back';
-  return choice === 'reformulated' ? reformulation : original;
+  if (choice === 'back') return { tag: 'back' };
+  return { tag: 'content', value: choice === 'reformulated' ? reformulation : original };
 }
 
 // ─── public API ───────────────────────────────────────────────────────────────

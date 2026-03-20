@@ -22,13 +22,20 @@ export function keypress<T>(
   // Non-TTY fallback: simple line-based input
   if (!process.stdin.isTTY) {
     return new Promise<T>((resolve) => {
-      const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-      rl.question(`${message}  ${legend}\n> `, (answer) => {
-        rl.close();
-        const key = answer.trim().toLowerCase();
-        const match = choices.find(c => c.key === key);
-        resolve(match ? match.value : choices[choices.length - 1].value);
-      });
+      const rl = readline.createInterface({ input: process.stdin, output: process.stdout, terminal: false });
+      const ask = () => {
+        rl.question(`${message}  ${legend}\n> `, (answer) => {
+          const key = answer.trim().toLowerCase();
+          const match = choices.find(c => c.key === key);
+          if (match) {
+            rl.close();
+            resolve(match.value);
+          } else {
+            ask(); // ignore unrecognised input, re-prompt
+          }
+        });
+      };
+      ask();
     });
   }
 

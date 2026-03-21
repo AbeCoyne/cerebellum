@@ -1,9 +1,12 @@
 import { select, input } from '@inquirer/prompts';
 import { readQueue, removeEntry } from './queue.js';
-import { evaluate } from './index.js';
+import { evaluate, synthesizeResuggest } from './index.js';
 import { captureThought } from '../capture.js';
 import { keypress } from '../cli/keypress.js';
+import type { KeyChoice } from '../cli/keypress.js';
 import type { QueueEntry } from './types.js';
+
+type ReviewAction = 'keep' | 'drop' | 'axiom' | 'edit' | 'resuggest' | 'skip' | 'quit' | 'retry';
 
 // ─── display helpers ──────────────────────────────────────────────────────────
 
@@ -101,26 +104,35 @@ async function runEditLoop(
 
 // ─── resolve one entry ────────────────────────────────────────────────────────
 
-function buildChoices(entry: QueueEntry) {
-  const quit = { key: 'q', label: 'Quit', value: 'quit' as const };
-  return entry.status === 'gate-failed'
-    ? [
-        { key: 'r', label: 'Retry', value: 'retry' as const },
-        { key: 'k', label: 'Keep',  value: 'keep'  as const },
-        { key: 'e', label: 'Edit',  value: 'edit'  as const },
-        { key: 'a', label: 'Axiom', value: 'axiom' as const },
-        { key: 'd', label: 'Drop',  value: 'drop'  as const },
-        { key: 's', label: 'Skip',  value: 'skip'  as const },
-        quit,
-      ]
-    : [
-        { key: 'k', label: 'Keep',  value: 'keep'  as const },
-        { key: 'd', label: 'Drop',  value: 'drop'  as const },
-        { key: 'a', label: 'Axiom', value: 'axiom' as const },
-        { key: 'e', label: 'Edit',  value: 'edit'  as const },
-        { key: 's', label: 'Skip',  value: 'skip'  as const },
-        quit,
-      ];
+function buildChoices(entry: QueueEntry): KeyChoice<ReviewAction>[] {
+  const quit: KeyChoice<ReviewAction> = { key: 'q', label: 'Quit', value: 'quit' };
+
+  if (entry.status === 'gate-failed') {
+    return [
+      { key: 'r', label: 'Retry', value: 'retry' },
+      { key: 'k', label: 'Keep',  value: 'keep'  },
+      { key: 'e', label: 'Edit',  value: 'edit'  },
+      { key: 'a', label: 'Axiom', value: 'axiom' },
+      { key: 'd', label: 'Drop',  value: 'drop'  },
+      { key: 's', label: 'Skip',  value: 'skip'  },
+      quit,
+    ];
+  }
+
+  const choices: KeyChoice<ReviewAction>[] = [
+    { key: 'k', label: 'Keep',  value: 'keep'  },
+    { key: 'd', label: 'Drop',  value: 'drop'  },
+    { key: 'a', label: 'Axiom', value: 'axiom' },
+    { key: 'e', label: 'Edit',  value: 'edit'  },
+  ];
+
+  if (entry.verdict?.adversarial_note) {
+    choices.push({ key: 'r', label: 'Re-suggest', value: 'resuggest' });
+  }
+
+  choices.push({ key: 's', label: 'Skip', value: 'skip' });
+  choices.push(quit);
+  return choices;
 }
 
 /**
@@ -184,6 +196,26 @@ async function resolveEntry(
 
       case 'drop': {
         console.log('  ✓ Discarded.');
+        removeEntry(current.id);
+        return true;
+      }
+
+      case 'resuggest': {
+        if (!current.verdict?.adversarial_note) { continue; }
+        console.log('  ⟳ Generating revised suggestion…');
+        const revised = await synthesizeResuggest(
+          current.content,
+          current.verdict.reformulation,
+          current.verdict.adversarial_note,
+        );
+        if (!revised) {
+          console.log('  ⚠  Could not generate revised suggestion. Try again.');
+          continue;
+        }
+        const resuggestResult = await _offerReformulation(revised, current.content);
+        if (resuggestResult.tag === 'back') continue;
+        await captureThought(resuggestResult.value, current.source);
+        console.log('  ✓ Stored.');
         removeEntry(current.id);
         return true;
       }

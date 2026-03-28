@@ -35,6 +35,7 @@ export function registerListRecent(server: McpServer) {
             m.topics.length ? `  topics:  ${m.topics.join(', ')}` : '',
             m.mentions.length ? `  people:  ${m.mentions.join(', ')}` : '',
             m.action_items.length ? `  actions: ${m.action_items.join(' · ')}` : '',
+            m.refs?.length ? `  refs:    ${m.refs.join(', ')}` : '',
           ].filter(Boolean).join('\n');
         });
 

@@ -8,7 +8,8 @@ Return ONLY valid JSON matching this shape:
   "type": "observation" | "task" | "idea" | "reference" | "people" | "preference",
   "topics": string[],      // 1-3 short lowercase tags
   "mentions": string[],    // full names mentioned (empty array if none)
-  "action_items": string[] // specific next actions implied (empty array if none)
+  "action_items": string[], // specific next actions implied (empty array if none)
+  "refs": string[]         // file paths or URLs mentioned (empty array if none)
 }
 
 Type guide:
@@ -17,7 +18,12 @@ Type guide:
 - idea: creative or strategic thought
 - reference: a fact, link, or source to remember
 - people: primarily about a specific person — relationships, context, notes
-- preference: a personal taste, aesthetic, or opinion — things you like, dislike, or prefer`;
+- preference: a personal taste, aesthetic, or opinion — things you like, dislike, or prefer
+
+Refs guide:
+- Extract any absolute file paths (e.g. /Users/..., ~/..., ./src/...)
+- Extract any URLs (https://..., http://...)
+- Keep them verbatim — do not normalize or shorten`;
 
 export async function classifyThought(content: string): Promise<ThoughtMetadata> {
   const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
@@ -48,7 +54,7 @@ export async function classifyThought(content: string): Promise<ThoughtMetadata>
 
   if (!json.choices?.length || json.choices[0].message.content === null) {
     console.warn('[classify] API returned no choices or null content — using default metadata');
-    return { type: 'observation', topics: [], mentions: [], action_items: [] };
+    return { type: 'observation', topics: [], mentions: [], action_items: [], refs: [] };
   }
 
   const VALID_TYPES: ThoughtMetadata['type'][] = ['observation', 'task', 'idea', 'reference', 'people', 'preference'];
@@ -61,9 +67,10 @@ export async function classifyThought(content: string): Promise<ThoughtMetadata>
       topics:       parsed.topics        ?? [],
       mentions:     parsed.mentions      ?? [],
       action_items: parsed.action_items  ?? [],
+      refs:         parsed.refs          ?? [],
     };
   } catch {
     console.warn('[classify] JSON parse failed — using default metadata');
-    return { type: 'observation', topics: [], mentions: [], action_items: [] };
+    return { type: 'observation', topics: [], mentions: [], action_items: [], refs: [] };
   }
 }

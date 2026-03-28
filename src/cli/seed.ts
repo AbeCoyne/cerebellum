@@ -96,7 +96,7 @@ export async function runBatch(
   return { stored, failed, errors };
 }
 
-export async function cmd_seed(filePath: string, dryRun: boolean): Promise<void> {
+export async function cmd_seed(filePath: string, dryRun: boolean, inject = false): Promise<void> {
   const entries = parseFile(filePath);
 
   console.log(`\n${entries.length} entries in ${filePath}\n`);
@@ -114,10 +114,11 @@ export async function cmd_seed(filePath: string, dryRun: boolean): Promise<void>
     return;
   }
 
-  const pipelineLabel = { direct: 'direct to DB', gk: 'GK queue (memo review)', full: 'Operator → GK queue' }[cfg.seed.pipeline as string] ?? cfg.seed.pipeline;
+  const pipeline = inject ? 'direct' : cfg.seed.pipeline;
+  const pipelineLabel = { direct: 'direct to DB', gk: 'GK queue (memo review)', full: 'Operator → GK queue' }[pipeline as string] ?? pipeline;
   console.log(`Pipeline: ${pipelineLabel}`);
   console.log(`Capturing ${entries.length} thoughts (concurrency 3)...\n`);
-  const { stored, failed, errors } = await runBatch(entries, 3);
+  const { stored, failed, errors } = await runBatch(entries, 3, { pipeline: pipeline as 'direct' | 'gk' | 'full' });
 
   console.log(`\n✓ Done. ${stored} stored, ${failed} failed.`);
   if (errors.length) {

@@ -61,7 +61,8 @@ cerebellum — personal second brain CLI
   memo search "query"              Semantic search
   memo recent                      List recent thoughts (--days N  --limit N)
   memo stats                       Show thinking patterns
-  memo seed <file.json>            Batch capture from JSON (via SEED_PIPELINE)
+  memo seed <file.json>             Batch capture from JSON (via SEED_PIPELINE)
+  memo seed --inject <file.json>   Bypass gate — direct to DB
   memo seed --dry-run <file.json>  Preview entries without writing
   memo seed --undo                 Delete all seeded thoughts
   memo import --claude [path]      Import CLAUDE.md via LLM distillation
@@ -208,10 +209,11 @@ if (!command || command === 'help' || command === '--help' || command === '-h') 
     await cmd_seed_undo();
   } else {
     const dryRun = args.includes('--dry-run');
+    const inject = args.includes('--inject');
     const file = args.slice(1).find(a => !a.startsWith('--'));
-    if (!file) { console.error('Usage: memo seed [--dry-run] <file.json>'); process.exit(1); }
+    if (!file) { console.error('Usage: memo seed [--dry-run] [--inject] <file.json>'); process.exit(1); }
     try {
-      await cmd_seed(file, dryRun);
+      await cmd_seed(file, dryRun, inject);
     } catch (err) {
       console.error(err instanceof Error ? err.message : String(err));
       process.exit(1);
@@ -275,3 +277,6 @@ if (!command || command === 'help' || command === '--help' || command === '-h') 
   // Default: treat argument(s) as a thought to capture
   await cmd_capture(args.join(' '));
 }
+
+// Exit cleanly — don't hang on fire-and-forget async evaluations
+process.exit(0);

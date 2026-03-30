@@ -1,8 +1,8 @@
-import { select } from '@inquirer/prompts';
 import { readWeb, removeEntries } from '../operator/web.js';
 import { enqueue } from '../gatekeeper/queue.js';
 import { evaluate } from '../gatekeeper/index.js';
 import { intake } from '../operator/index.js';
+import { keypress } from './keypress.js';
 import type { WebEntry } from '../operator/types.js';
 
 // ─── display helpers ──────────────────────────────────────────────────────────
@@ -46,33 +46,29 @@ function displayEntry(entry: WebEntry, index: number, total: number): void {
 async function forceSynthesise(entry: WebEntry): Promise<void> {
   removeEntries([entry.id]);
   await intake(entry.content, entry.source, entry.capture_reason);
-  console.log('  ↺ Re-evaluation triggered — check results in a moment.');
+  process.stdout.write(' → ✓ Sent to Operator for re-synthesis.\n');
 }
 
 // ─── resolve one entry ────────────────────────────────────────────────────────
 
-async function resolveEntry(entry: WebEntry, index: number, total: number): Promise<boolean> {
+async function resolveEntry(entry: WebEntry, index: number, total: number): Promise<boolean | 'quit'> {
   displayEntry(entry, index, total);
 
-  const choice = await select({
-    message: 'Decision:',
-    choices: [
-      { name: '↺ Re-evaluate now',  value: 'synthesise' },
-      { name: '→ Pass through',     value: 'pass'       },
-      { name: '✗ Discard',          value: 'discard'    },
-      { name: '⟳ Skip',             value: 'skip'       },
-    ],
-  });
+  const choice = await keypress('Decision:', [
+    { key: 'r', label: 'Re-synthesize', value: 're-synthesize' as const },
+    { key: 'p', label: 'Pass through', value: 'pass'        as const },
+    { key: 'd', label: 'Drop',         value: 'drop'        as const },
+    { key: 's', label: 'Skip',         value: 'skip'        as const },
+    { key: 'q', alias: 'escape', label: 'Quit [ESC]', value: 'quit' as const },
+  ]);
 
   switch (choice) {
-    case 'synthesise': {
+    case 're-synthesize': {
       await forceSynthesise(entry);
       return true;
     }
 
     case 'pass': {
-      // Re-read post-prompt — a "Re-evaluate now" background run may have
-      // already synthesised and removed this entry during the select delay.
       if (!readWeb().some(e => e.id === entry.id)) {
         console.log('  ↳ Already handled by background evaluation — skipping.');
         return true;
@@ -82,23 +78,26 @@ async function resolveEntry(entry: WebEntry, index: number, total: number): Prom
       evaluate(gkEntry).catch(err =>
         console.error('[gate] background evaluation error:', err),
       );
-      console.log('  ✓ Sent straight to GK queue.');
+      process.stdout.write(' → ✓ Sent to GK queue.\n');
       return true;
     }
 
-    case 'discard': {
+    case 'drop': {
       if (!readWeb().some(e => e.id === entry.id)) {
-        console.log('  ↳ Already handled by background evaluation — skipping.');
+        process.stdout.write(' → Already handled.\n');
         return true;
       }
       removeEntries([entry.id]);
-      console.log('  ✓ Discarded.');
+      process.stdout.write(' → ✓ Discarded.\n');
       return true;
     }
 
+    case 'quit':
+      return 'quit';
+
     case 'skip':
     default:
-      console.log('  → Skipped (stays in web).');
+      process.stdout.write(' → Skipped.\n');
       return false;
   }
 }
@@ -116,6 +115,7 @@ export async function runWebReview(): Promise<void> {
   console.log(`\n📌 Web: ${entries.length} entr${entries.length > 1 ? 'ies' : 'y'} held`);
 
   let actioned = 0;
+  let quit = false;
 
   for (let i = 0; i < entries.length; i++) {
     const current = readWeb();
@@ -123,13 +123,16 @@ export async function runWebReview(): Promise<void> {
     if (!entry) continue; // already removed (e.g. synthesised with another)
 
     const resolved = await resolveEntry(entry, i, entries.length);
+    if (resolved === 'quit') { quit = true; break; }
     if (resolved) actioned++;
   }
 
   const remaining = readWeb().length;
 
   separator();
-  if (remaining > 0) {
+  if (quit) {
+    console.log(`✓ Reviewed ${actioned}. Quit with ${remaining} remaining in web.`);
+  } else if (remaining > 0) {
     console.log(`✓ Done. ${actioned} actioned  •  ${remaining} still held.`);
   } else {
     console.log(`✓ Web buffer cleared. ${actioned} entr${actioned !== 1 ? 'ies' : 'y'} actioned.`);

@@ -124,6 +124,35 @@ async function callGate(entry: QueueEntry): Promise<GatekeeperVerdict> {
   return verdict;
 }
 
+// ─── adversarial re-suggest ───────────────────────────────────────────────────
+
+/**
+ * Synthesizes a revised reformulation that addresses the adversarial critique.
+ * Returns undefined on error (caller shows a fallback message).
+ */
+export async function synthesizeResuggest(
+  original:        string,
+  reformulation:   string | undefined,
+  adversarialNote: string,
+): Promise<string | undefined> {
+  try {
+    const parts = [
+      `Original thought: ${original}`,
+      ...(reformulation ? [`Initial reformulation: ${reformulation}`] : []),
+      `Adversarial critique: ${adversarialNote}`,
+    ];
+    const text = await openrouterChat(
+      cfg.gate.model,
+      'You are a thought reformulator. Given an original thought, an optional initial reformulation, and an adversarial critique, produce one improved reformulation that addresses the critique. Output only the reformulated thought — no commentary, no quotes, no preamble.',
+      parts.join('\n\n'),
+      false,
+    );
+    return text.trim() || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 // ─── public API ───────────────────────────────────────────────────────────────
 
 /**

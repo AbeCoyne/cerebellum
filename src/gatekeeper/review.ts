@@ -1,8 +1,12 @@
-import { select, input } from '@inquirer/prompts';
+import { select } from '@inquirer/prompts';
 import { readQueue, removeEntry } from './queue.js';
 import { evaluate } from './index.js';
 import { captureThought } from '../capture.js';
+import { keypress } from '../cli/keypress.js';
+import type { KeyChoice } from '../cli/keypress.js';
 import type { QueueEntry } from './types.js';
+
+type ReviewAction = 'keep' | 'drop' | 'axiom' | 'skip' | 'quit' | 'retry';
 
 // ─── display helpers ──────────────────────────────────────────────────────────
 
@@ -63,69 +67,40 @@ function displayEntry(entry: QueueEntry, index: number, total: number): void {
   console.log('');
 }
 
-// ─── edit loop ────────────────────────────────────────────────────────────────
-
-// Returns: { content, is_axiom } to store, null to drop, 'cancel' to go back to menu
-async function runEditLoop(
-  entry: QueueEntry,
-): Promise<{ content: string; is_axiom: boolean } | null | 'cancel'> {
-  let edited: string;
-
-  try {
-    edited = await input({ message: 'Paste improved version:' });
-  } catch {
-    // Esc pressed — go back to decision menu
-    return 'cancel';
-  }
-
-  if (!edited.trim()) return 'cancel';
-
-  console.log(`\n  Using: "${edited.trim()}"\n`);
-
-  const action = await select({
-    message: 'What to do with the edited version?',
-    choices: [
-      { name: '✓ Keep',  value: 'keep'  },
-      { name: '★ Axiom', value: 'axiom' },
-      { name: '✗ Drop',  value: 'drop'  },
-    ],
-  });
-
-  if (action === 'keep')  return { content: edited.trim(), is_axiom: false };
-  if (action === 'axiom') return { content: edited.trim(), is_axiom: true  };
-  return null; // drop
-}
-
 // ─── resolve one entry ────────────────────────────────────────────────────────
 
-function buildChoices(entry: QueueEntry) {
-  return entry.status === 'gate-failed'
-    ? [
-        { name: '↺ Retry gate', value: 'retry' },
-        { name: '✓ Keep as-is', value: 'keep'  },
-        { name: '✎ Edit',       value: 'edit'  },
-        { name: '★ Axiom',      value: 'axiom' },
-        { name: '✗ Drop',       value: 'drop'  },
-        { name: '→ Skip',       value: 'skip'  },
-      ]
-    : [
-        { name: '✓ Keep',  value: 'keep'  },
-        { name: '✗ Drop',  value: 'drop'  },
-        { name: '★ Axiom', value: 'axiom' },
-        { name: '✎ Edit',  value: 'edit'  },
-        { name: '→ Skip',  value: 'skip'  },
-      ];
+function buildChoices(entry: QueueEntry): KeyChoice<ReviewAction>[] {
+  const quit: KeyChoice<ReviewAction> = { key: 'q', alias: 'escape', label: 'Quit [ESC]', value: 'quit' };
+
+  if (entry.status === 'gate-failed') {
+    return [
+      { key: 'r', label: 'Retry', value: 'retry' },
+      { key: 'k', label: 'Keep',  value: 'keep'  },
+      { key: 'a', label: 'Axiom', value: 'axiom' },
+      { key: 'd', label: 'Drop',  value: 'drop'  },
+      { key: 's', label: 'Skip',  value: 'skip'  },
+      quit,
+    ];
+  }
+
+  return [
+    { key: 'k', label: 'Keep',  value: 'keep'  },
+    { key: 'd', label: 'Drop',  value: 'drop'  },
+    { key: 'a', label: 'Axiom', value: 'axiom' },
+    { key: 's', label: 'Skip',  value: 'skip'  },
+    quit,
+  ];
 }
 
 /**
  * Returns true if the entry was resolved (removed from queue),
- * false if skipped.
+ * false if skipped, or 'quit' to break out of the review loop.
  */
 async function resolveEntry(
   entry: QueueEntry,
   index: number,
   total: number,
-): Promise<boolean> {
+): Promise<boolean | 'quit'> {
   let current = entry;
 
   while (true) {
@@ -134,7 +109,7 @@ async function resolveEntry(
     // Only true-pending entries (still evaluating) get silently skipped
     if (current.status === 'pending') return false;
 
-    const choice = await select({ message: 'Decision:', choices: buildChoices(current) });
+    const choice = await keypress('Decision:', buildChoices(current));
 
     switch (choice) {
 
@@ -151,61 +126,76 @@ async function resolveEntry(
       }
 
       case 'keep': {
-        const content = current.verdict?.reformulation
-          ? await _offerReformulation(current.verdict.reformulation, current.content)
-          : current.content;
-        await captureThought(content, current.source);
-        console.log('  ✓ Stored.');
+        if (current.verdict?.reformulation) {
+          const result = await _offerReformulation(current.verdict.reformulation, current.content);
+          if (result.tag === 'back') continue;
+          await captureThought(result.value, current.source);
+        } else {
+          await captureThought(current.content, current.source);
+        }
+        process.stdout.write(' → ✓ Stored.\n');
         removeEntry(current.id);
         return true;
       }
 
       case 'axiom': {
-        const content = current.verdict?.reformulation
-          ? await _offerReformulation(current.verdict.reformulation, current.content)
-          : current.content;
-        await captureThought(content, current.source, 'axiom');
-        console.log('  ✓ Stored as axiom (permanent directive, confidence: 1.0).');
+        if (current.verdict?.reformulation) {
+          const result = await _offerReformulation(current.verdict.reformulation, current.content);
+          if (result.tag === 'back') continue;
+          await captureThought(result.value, current.source, 'axiom');
+        } else {
+          await captureThought(current.content, current.source, 'axiom');
+        }
+        process.stdout.write(' → ✓ Stored as axiom.\n');
         removeEntry(current.id);
         return true;
       }
 
       case 'drop': {
-        console.log('  ✓ Discarded.');
+        process.stdout.write(' → ✓ Discarded.\n');
         removeEntry(current.id);
         return true;
       }
 
-      case 'edit': {
-        const result = await runEditLoop(current);
-        if (result === 'cancel') continue; // Esc — loop back to decision menu
-        if (!result) {
-          console.log('  ✓ Discarded.');
-        } else {
-          await captureThought(result.content, current.source, result.is_axiom ? 'axiom' : undefined);
-          console.log(result.is_axiom ? '  ✓ Stored as axiom.' : '  ✓ Stored.');
-        }
-        removeEntry(current.id);
-        return true;
-      }
+      case 'quit':
+        return 'quit';
 
       case 'skip':
       default:
-        console.log('  → Skipped (stays in queue).');
+        process.stdout.write(' → Skipped.\n');
         return false;
     }
   }
 }
 
-async function _offerReformulation(reformulation: string, original: string): Promise<string> {
-  const choice = await select({
-    message: 'Which version to store?',
-    choices: [
-      { name: `Suggested: "${reformulation}"`, value: 'reformulated' },
-      { name: `Original:  "${original}"`,      value: 'original'     },
-    ],
-  });
-  return choice === 'reformulated' ? reformulation : original;
+type ReformulationResult = { tag: 'back' } | { tag: 'content'; value: string };
+
+async function _offerReformulation(
+  reformulation: string,
+  original: string,
+): Promise<ReformulationResult> {
+  const ac = new AbortController();
+  const onEsc = (_s: unknown, key: { name?: string }) => {
+    if (key?.name === 'escape') ac.abort();
+  };
+  process.stdin.on('keypress', onEsc);
+  let choice: string;
+  try {
+    choice = await select({
+      message: 'Which version to store?',
+      choices: [
+        { name: `Suggested: "${reformulation}"`, value: 'reformulated' },
+        { name: `Original:  "${original}"`,      value: 'original'     },
+        { name: '← Back',                        value: 'back'         },
+      ],
+    }, { signal: ac.signal });
+  } catch {
+    return { tag: 'back' };
+  } finally {
+    process.stdin.removeListener('keypress', onEsc);
+  }
+  if (choice === 'back') return { tag: 'back' };
+  return { tag: 'content', value: choice === 'reformulated' ? reformulation : original };
 }
 
 // ─── public API ───────────────────────────────────────────────────────────────
@@ -229,6 +219,7 @@ export async function runReview(): Promise<void> {
   console.log(`\n📋 Queue: ${ready.length} item${ready.length > 1 ? 's' : ''} to review`);
 
   let reviewed = 0;
+  let quit = false;
 
   for (let i = 0; i < ready.length; i++) {
     const current = readQueue();
@@ -236,6 +227,7 @@ export async function runReview(): Promise<void> {
     if (!entry) continue; // already removed
 
     const resolved = await resolveEntry(entry, i, ready.length);
+    if (resolved === 'quit') { quit = true; break; }
     if (resolved) reviewed++;
   }
 
@@ -244,7 +236,9 @@ export async function runReview(): Promise<void> {
   ).length;
 
   separator();
-  if (remaining > 0) {
+  if (quit) {
+    console.log(`✓ Reviewed ${reviewed}. Quit with ${remaining} remaining in queue.`);
+  } else if (remaining > 0) {
     console.log(`✓ Done. ${reviewed} stored  •  ${remaining} skipped (still in queue).`);
   } else {
     console.log(`✓ Queue cleared. ${reviewed} thought${reviewed !== 1 ? 's' : ''} stored.`);

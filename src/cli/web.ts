@@ -46,7 +46,7 @@ function displayEntry(entry: WebEntry, index: number, total: number): void {
 async function forceSynthesise(entry: WebEntry): Promise<void> {
   removeEntries([entry.id]);
   await intake(entry.content, entry.source, entry.capture_reason);
-  console.log('  ↺ Re-evaluation triggered — check results in a moment.');
+  process.stdout.write(' → ✓ Sent to Operator for re-synthesis.\n');
 }
 
 // ─── resolve one entry ────────────────────────────────────────────────────────
@@ -55,15 +55,15 @@ async function resolveEntry(entry: WebEntry, index: number, total: number): Prom
   displayEntry(entry, index, total);
 
   const choice = await keypress('Decision:', [
-    { key: 'r', label: 'Re-evaluate', value: 'synthesise' as const },
-    { key: 'p', label: 'Pass through', value: 'pass'       as const },
-    { key: 'x', label: 'Discard',      value: 'discard'    as const },
-    { key: 's', label: 'Skip',         value: 'skip'       as const },
-    { key: 'q', label: 'Quit',         value: 'quit'       as const },
+    { key: 'r', label: 'Re-synthesize', value: 're-synthesize' as const },
+    { key: 'p', label: 'Pass through', value: 'pass'        as const },
+    { key: 'd', label: 'Drop',         value: 'drop'        as const },
+    { key: 's', label: 'Skip',         value: 'skip'        as const },
+    { key: 'q', alias: 'escape', label: 'Quit [ESC]', value: 'quit' as const },
   ]);
 
   switch (choice) {
-    case 'synthesise': {
+    case 're-synthesize': {
       await forceSynthesise(entry);
       return true;
     }
@@ -78,17 +78,17 @@ async function resolveEntry(entry: WebEntry, index: number, total: number): Prom
       evaluate(gkEntry).catch(err =>
         console.error('[gate] background evaluation error:', err),
       );
-      console.log('  ✓ Sent straight to GK queue.');
+      process.stdout.write(' → ✓ Sent to GK queue.\n');
       return true;
     }
 
-    case 'discard': {
+    case 'drop': {
       if (!readWeb().some(e => e.id === entry.id)) {
-        console.log('  ↳ Already handled by background evaluation — skipping.');
+        process.stdout.write(' → Already handled.\n');
         return true;
       }
       removeEntries([entry.id]);
-      console.log('  ✓ Discarded.');
+      process.stdout.write(' → ✓ Discarded.\n');
       return true;
     }
 
@@ -97,7 +97,7 @@ async function resolveEntry(entry: WebEntry, index: number, total: number): Prom
 
     case 'skip':
     default:
-      console.log('  → Skipped (stays in web).');
+      process.stdout.write(' → Skipped.\n');
       return false;
   }
 }

@@ -277,3 +277,6 @@ if (!command || command === 'help' || command === '--help' || command === '-h') 
   // Default: treat argument(s) as a thought to capture
   await cmd_capture(args.join(' '));
 }
+
+// Exit cleanly — don't hang on fire-and-forget async evaluations
+process.exit(0);

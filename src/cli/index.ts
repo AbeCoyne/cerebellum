@@ -10,22 +10,31 @@
  *   memo search "what was I thinking"  Semantic search
  *   memo recent [--days 7] [--limit 20]
  *   memo stats
+ *   memo test <command>                Run any command against sandbox
+ *   memo test:reset                    Wipe sandbox data
  *   memo help
  *
  * Setup alias:
  *   alias memo="node --import tsx/esm /Users/james/dev/new/cerebellum/src/cli/index.ts"
  */
 
-import { cfg } from '../config.js';
-import { searchByEmbedding, listRecent, getStats, truncateTestTable } from '../db.js';
-import { generateEmbedding } from '../embeddings.js';
-import { enqueue, readQueue } from '../gatekeeper/queue.js';
-import { evaluate } from '../gatekeeper/index.js';
-import { runReview } from '../gatekeeper/review.js';
-import { intake } from '../operator/index.js';
-import { cmd_seed, cmd_seed_undo } from './seed.js';
-import { cmd_import } from './import.js';
-import { runWebReview } from './web.js';
+// "memo test <command>" — set env BEFORE any imports so config.ts picks it up
+const _rawArgs = process.argv.slice(2);
+if (_rawArgs[0] === 'test' && _rawArgs.length > 1) {
+  process.env.CEREBELLUM_ENV = 'test';
+  process.argv.splice(2, 1); // remove 'test' so downstream sees the real command
+}
+
+const { cfg } = await import('../config.js');
+const { searchByEmbedding, listRecent, getStats, truncateTestTable } = await import('../db.js');
+const { generateEmbedding } = await import('../embeddings.js');
+const { enqueue, readQueue } = await import('../gatekeeper/queue.js');
+const { evaluate } = await import('../gatekeeper/index.js');
+const { runReview } = await import('../gatekeeper/review.js');
+const { intake } = await import('../operator/index.js');
+const { cmd_seed, cmd_seed_undo } = await import('./seed.js');
+const { cmd_import } = await import('./import.js');
+const { runWebReview } = await import('./web.js');
 
 if (cfg.env === 'test') {
   process.stderr.write('⚠ TEST MODE — using sandbox queue + thoughts_test table\n');

@@ -1,12 +1,12 @@
-import { select, input } from '@inquirer/prompts';
+import { select } from '@inquirer/prompts';
 import { readQueue, removeEntry } from './queue.js';
-import { evaluate, synthesizeResuggest } from './index.js';
+import { evaluate } from './index.js';
 import { captureThought } from '../capture.js';
 import { keypress } from '../cli/keypress.js';
 import type { KeyChoice } from '../cli/keypress.js';
 import type { QueueEntry } from './types.js';
 
-type ReviewAction = 'keep' | 'drop' | 'axiom' | 'edit' | 'resuggest' | 'skip' | 'quit' | 'retry';
+type ReviewAction = 'keep' | 'drop' | 'axiom' | 'skip' | 'quit' | 'retry';
 
 // ─── display helpers ──────────────────────────────────────────────────────────
 
@@ -67,41 +67,6 @@ function displayEntry(entry: QueueEntry, index: number, total: number): void {
   console.log('');
 }
 
-// ─── edit loop ────────────────────────────────────────────────────────────────
-
-// Returns: { content, is_axiom } to store, null to drop, 'cancel' to go back to menu
-async function runEditLoop(
-  entry: QueueEntry,
-): Promise<{ content: string; is_axiom: boolean } | null | 'cancel'> {
-  let edited: string;
-
-  try {
-    edited = await input({ message: 'Paste improved version:' });
-  } catch {
-    // Esc pressed — go back to decision menu
-    return 'cancel';
-  }
-
-  if (!edited.trim()) return 'cancel';
-
-  console.log(`\n  Using: "${edited.trim()}"\n`);
-
-  const action = await select({
-    message: 'What to do with the edited version?',
-    choices: [
-      { name: '✓ Keep (k)',    value: 'keep'   },
-      { name: '★ Axiom (a)',   value: 'axiom'  },
-      { name: '✗ Drop (d)',    value: 'drop'   },
-      { name: '← Back (Esc)', value: 'cancel' },
-    ],
-  });
-
-  if (action === 'keep')   return { content: edited.trim(), is_axiom: false };
-  if (action === 'axiom')  return { content: edited.trim(), is_axiom: true  };
-  if (action === 'cancel') return 'cancel';
-  return null; // drop
-}
-
 // ─── resolve one entry ────────────────────────────────────────────────────────
 
 function buildChoices(entry: QueueEntry): KeyChoice<ReviewAction>[] {
@@ -111,7 +76,6 @@ function buildChoices(entry: QueueEntry): KeyChoice<ReviewAction>[] {
     return [
       { key: 'r', label: 'Retry', value: 'retry' },
       { key: 'k', label: 'Keep',  value: 'keep'  },
-      { key: 'e', label: 'Edit',  value: 'edit'  },
       { key: 'a', label: 'Axiom', value: 'axiom' },
       { key: 'd', label: 'Drop',  value: 'drop'  },
       { key: 's', label: 'Skip',  value: 'skip'  },
@@ -119,20 +83,13 @@ function buildChoices(entry: QueueEntry): KeyChoice<ReviewAction>[] {
     ];
   }
 
-  const choices: KeyChoice<ReviewAction>[] = [
+  return [
     { key: 'k', label: 'Keep',  value: 'keep'  },
     { key: 'd', label: 'Drop',  value: 'drop'  },
     { key: 'a', label: 'Axiom', value: 'axiom' },
-    { key: 'e', label: 'Edit',  value: 'edit'  },
+    { key: 's', label: 'Skip',  value: 'skip'  },
+    quit,
   ];
-
-  if (entry.verdict?.adversarial_note) {
-    choices.push({ key: 'r', label: 'Re-suggest', value: 'resuggest' });
-  }
-
-  choices.push({ key: 's', label: 'Skip', value: 'skip' });
-  choices.push(quit);
-  return choices;
 }
 
 /**
@@ -200,39 +157,6 @@ async function resolveEntry(
         return true;
       }
 
-      case 'resuggest': {
-        if (!current.verdict?.adversarial_note) { continue; }
-        console.log('  ⟳ Generating revised suggestion…');
-        const revised = await synthesizeResuggest(
-          current.content,
-          current.verdict.reformulation,
-          current.verdict.adversarial_note,
-        );
-        if (!revised) {
-          console.log('  ⚠  Could not generate revised suggestion. Try again.');
-          continue;
-        }
-        const resuggestResult = await _offerReformulation(revised, current.content);
-        if (resuggestResult.tag === 'back') continue;
-        await captureThought(resuggestResult.value, current.source);
-        console.log('  ✓ Stored.');
-        removeEntry(current.id);
-        return true;
-      }
-
-      case 'edit': {
-        const result = await runEditLoop(current);
-        if (result === 'cancel') continue; // Esc — loop back to decision menu
-        if (!result) {
-          console.log('  ✓ Discarded.');
-        } else {
-          await captureThought(result.content, current.source, result.is_axiom ? 'axiom' : undefined);
-          console.log(result.is_axiom ? '  ✓ Stored as axiom.' : '  ✓ Stored.');
-        }
-        removeEntry(current.id);
-        return true;
-      }
-
       case 'quit':
         return 'quit';
 
@@ -250,14 +174,26 @@ async function _offerReformulation(
   reformulation: string,
   original: string,
 ): Promise<ReformulationResult> {
-  const choice = await select({
-    message: 'Which version to store?',
-    choices: [
-      { name: `Suggested: "${reformulation}"`, value: 'reformulated' },
-      { name: `Original:  "${original}"`,      value: 'original'     },
-      { name: '← Back',                        value: 'back'         },
-    ],
-  });
+  const ac = new AbortController();
+  const onEsc = (_s: unknown, key: { name?: string }) => {
+    if (key?.name === 'escape') ac.abort();
+  };
+  process.stdin.on('keypress', onEsc);
+  let choice: string;
+  try {
+    choice = await select({
+      message: 'Which version to store?',
+      choices: [
+        { name: `Suggested: "${reformulation}"`, value: 'reformulated' },
+        { name: `Original:  "${original}"`,      value: 'original'     },
+        { name: '← Back',                        value: 'back'         },
+      ],
+    }, { signal: ac.signal });
+  } catch {
+    return { tag: 'back' };
+  } finally {
+    process.stdin.removeListener('keypress', onEsc);
+  }
   if (choice === 'back') return { tag: 'back' };
   return { tag: 'content', value: choice === 'reformulated' ? reformulation : original };
 }

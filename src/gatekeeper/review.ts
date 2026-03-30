@@ -70,7 +70,7 @@ function displayEntry(entry: QueueEntry, index: number, total: number): void {
 // ─── resolve one entry ────────────────────────────────────────────────────────
 
 function buildChoices(entry: QueueEntry): KeyChoice<ReviewAction>[] {
-  const quit: KeyChoice<ReviewAction> = { key: 'q', label: 'Quit', value: 'quit' };
+  const quit: KeyChoice<ReviewAction> = { key: 'q', alias: 'escape', label: 'Quit [ESC]', value: 'quit' };
 
   if (entry.status === 'gate-failed') {
     return [

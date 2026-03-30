@@ -4,6 +4,10 @@ import type { Thought, ThoughtMetadata, ThoughtWithSimilarity } from './types.js
 
 const supabase = createClient(cfg.supabase.url, cfg.supabase.serviceKey);
 
+const TABLE      = cfg.env === 'test' ? 'thoughts_test' : 'thoughts';
+const RPC_SEARCH = cfg.env === 'test' ? 'search_thoughts_test' : 'search_thoughts';
+const RPC_STATS  = cfg.env === 'test' ? 'get_stats_test' : 'get_stats';
+
 const THOUGHT_COLUMNS = 'id, content, metadata, source, embedding_model, parent_id, superseded_by, confidence, privacy_tier, created_at';
 
 export async function insertThought(
@@ -14,7 +18,7 @@ export async function insertThought(
   embeddingModel: string,
 ): Promise<Thought> {
   const { data, error } = await supabase
-    .from('thoughts')
+    .from(TABLE)
     .insert({ content, embedding: `[${embedding.join(',')}]`, metadata, source, embedding_model: embeddingModel })
     .select(THOUGHT_COLUMNS)
     .single();
@@ -28,7 +32,7 @@ export async function searchByEmbedding(
   limit = 10,
   threshold = 0.5,
 ): Promise<ThoughtWithSimilarity[]> {
-  const { data, error } = await supabase.rpc('search_thoughts', {
+  const { data, error } = await supabase.rpc(RPC_SEARCH, {
     query_embedding: `[${embedding.join(',')}]`,
     match_count: limit,
     threshold,
@@ -46,7 +50,7 @@ export async function listRecent(
   since.setDate(since.getDate() - days);
 
   const { data, error } = await supabase
-    .from('thoughts')
+    .from(TABLE)
     .select(THOUGHT_COLUMNS)
     .gte('created_at', since.toISOString())
     .order('created_at', { ascending: false })
@@ -58,7 +62,7 @@ export async function listRecent(
 
 export async function countBySource(sourcePrefix: string): Promise<number> {
   const { count, error } = await supabase
-    .from('thoughts')
+    .from(TABLE)
     .select('*', { count: 'exact', head: true })
     .like('source', `${sourcePrefix}%`);
 
@@ -68,7 +72,7 @@ export async function countBySource(sourcePrefix: string): Promise<number> {
 
 export async function deleteBySource(sourcePrefix: string): Promise<number> {
   const { data, error } = await supabase
-    .from('thoughts')
+    .from(TABLE)
     .delete()
     .like('source', `${sourcePrefix}%`)
     .select('id');
@@ -83,7 +87,7 @@ export async function getStats(): Promise<{
   top_topics: Array<{ topic: string; count: number }>;
   top_people: Array<{ person: string; count: number }>;
 }> {
-  const { data, error } = await supabase.rpc('get_stats');
+  const { data, error } = await supabase.rpc(RPC_STATS);
 
   if (error) throw new Error(`DB stats failed: ${error.message}`);
 
@@ -100,4 +104,16 @@ export async function getStats(): Promise<{
     top_topics: stats.top_topics ?? [],
     top_people: stats.top_people ?? [],
   };
+}
+
+export async function truncateTestTable(): Promise<number> {
+  if (cfg.env !== 'test') throw new Error('truncateTestTable only allowed in test mode');
+  const { data, error } = await supabase
+    .from('thoughts_test')
+    .delete()
+    .neq('id', '00000000-0000-0000-0000-000000000000')
+    .select('id');
+
+  if (error) throw new Error(`DB truncate failed: ${error.message}`);
+  return data?.length ?? 0;
 }

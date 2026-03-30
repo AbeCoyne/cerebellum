@@ -17,7 +17,11 @@ function optional_env(name: string, fallback: string): string {
   return process.env[name] ?? fallback;
 }
 
+const env = optional_env('CEREBELLUM_ENV', 'production') as 'production' | 'test';
+const isTest = env === 'test';
+
 export const cfg = {
+  env,
   supabase: {
     url:        require_env('SUPABASE_URL'),
     serviceKey: require_env('SUPABASE_SERVICE_KEY'),
@@ -33,13 +37,13 @@ export const cfg = {
   },
   gate: {
     model:       optional_env('GATE_MODEL',       'openai/gpt-4o-mini'),
-    queuePath:   optional_env('CEREBELLUM_QUEUE_PATH', join(homedir(), '.cerebellum', 'queue.json')),
+    queuePath:   optional_env('CEREBELLUM_QUEUE_PATH', join(homedir(), '.cerebellum', isTest ? 'queue-test.json' : 'queue.json')),
     queueMax:    parseInt(optional_env('GATE_QUEUE_MAX', '100'), 10),
     adversarial: optional_env('GATE_ADVERSARIAL', 'true') !== 'false',
   },
   operator: {
     model:               optional_env('OPERATOR_MODEL',                  'anthropic/claude-sonnet-4-6'),
-    webPath:             optional_env('OPERATOR_WEB_PATH',               join(homedir(), '.cerebellum', 'web.json')),
+    webPath:             optional_env('OPERATOR_WEB_PATH',               join(homedir(), '.cerebellum', isTest ? 'web-test.json' : 'web.json')),
     ttlPersonalHours:    parseInt(optional_env('OPERATOR_TTL_PERSONAL_HOURS',     '168'), 10), // 7d
     ttlOperationalHours: parseInt(optional_env('OPERATOR_TTL_OPERATIONAL_HOURS',   '24'), 10), // 1d
   },

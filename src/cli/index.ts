@@ -16,7 +16,8 @@
  *   alias memo="node --import tsx/esm /Users/james/dev/new/cerebellum/src/cli/index.ts"
  */
 
-import { searchByEmbedding, listRecent, getStats } from '../db.js';
+import { cfg } from '../config.js';
+import { searchByEmbedding, listRecent, getStats, truncateTestTable } from '../db.js';
 import { generateEmbedding } from '../embeddings.js';
 import { enqueue, readQueue } from '../gatekeeper/queue.js';
 import { evaluate } from '../gatekeeper/index.js';
@@ -25,6 +26,10 @@ import { intake } from '../operator/index.js';
 import { cmd_seed, cmd_seed_undo } from './seed.js';
 import { cmd_import } from './import.js';
 import { runWebReview } from './web.js';
+
+if (cfg.env === 'test') {
+  process.stderr.write('⚠ TEST MODE — using sandbox queue + thoughts_test table\n');
+}
 
 const args    = process.argv.slice(2);
 const command = args[0];
@@ -57,6 +62,7 @@ cerebellum — personal second brain CLI
   memo import --dry-run --<platform>   Preview without writing
   memo import --undo --<platform>      Delete all import:<platform> thoughts
   memo import --force --<platform>     Bypass dedup guard
+  memo test:reset                  Wipe sandbox data (requires CEREBELLUM_ENV=test)
   memo help                        Show this message
 `.trim());
 }
@@ -234,6 +240,22 @@ if (!command || command === 'help' || command === '--help' || command === '-h') 
     undo:   args.includes('--undo'),
     force:  args.includes('--force'),
   });
+
+} else if (command === 'test:reset') {
+  if (cfg.env !== 'test') {
+    console.error('Refused — test:reset requires CEREBELLUM_ENV=test');
+    process.exit(1);
+  }
+  const { unlinkSync, existsSync } = await import('fs');
+  let dbCount = 0;
+  try { dbCount = await truncateTestTable(); } catch (e) {
+    console.error(`DB wipe failed: ${e instanceof Error ? e.message : String(e)}`);
+  }
+  let queueCleared = false;
+  if (existsSync(cfg.gate.queuePath)) { unlinkSync(cfg.gate.queuePath); queueCleared = true; }
+  let webCleared = false;
+  if (existsSync(cfg.operator.webPath)) { unlinkSync(cfg.operator.webPath); webCleared = true; }
+  console.log(`✓ Sandbox reset: ${dbCount} thoughts deleted, queue ${queueCleared ? 'cleared' : 'empty'}, web ${webCleared ? 'cleared' : 'empty'}`);
 
 } else if (command === '--axiom') {
   const text = args.slice(1).join(' ');

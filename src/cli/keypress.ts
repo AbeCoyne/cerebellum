@@ -1,8 +1,9 @@
 import * as readline from 'node:readline';
 
 export interface KeyChoice<T> {
-  key: string;   // single character, e.g. 'k'
-  label: string; // display label, e.g. 'Keep'
+  key: string;    // single character, e.g. 'k'
+  alias?: string; // alternate key.name that also triggers this choice (e.g. 'escape')
+  label: string;  // display label, e.g. 'Keep'
   value: T;
 }
 
@@ -17,7 +18,6 @@ export function keypress<T>(
   choices: KeyChoice<T>[],
 ): Promise<T> {
   const legend = choices.map(c => `${c.key}) ${c.label}`).join('  ');
-  const validKeys = new Set(choices.map(c => c.key));
 
   // Non-TTY fallback: simple line-based input
   if (!process.stdin.isTTY) {
@@ -26,7 +26,7 @@ export function keypress<T>(
       const ask = () => {
         rl.question(`${message}  ${legend}\n> `, (answer) => {
           const key = answer.trim().toLowerCase();
-          const match = choices.find(c => c.key === key);
+          const match = choices.find(c => c.key === key || c.alias === key);
           if (match) {
             rl.close();
             resolve(match.value);
@@ -56,10 +56,10 @@ export function keypress<T>(
       }
 
       const pressed = key.name ?? _str ?? '';
-      if (!validKeys.has(pressed)) return; // ignore unrecognised keys
+      const match = choices.find(c => c.key === pressed || c.alias === pressed);
+      if (!match) return; // ignore unrecognised keys
 
       cleanup();
-      const match = choices.find(c => c.key === pressed)!;
       process.stdout.write(`${match.label}\n`);
       resolve(match.value);
     };

@@ -133,7 +133,7 @@ async function resolveEntry(
         } else {
           await captureThought(current.content, current.source);
         }
-        console.log('  ✓ Stored.');
+        process.stdout.write(' → ✓ Stored.\n');
         removeEntry(current.id);
         return true;
       }
@@ -146,13 +146,13 @@ async function resolveEntry(
         } else {
           await captureThought(current.content, current.source, 'axiom');
         }
-        console.log('  ✓ Stored as axiom (permanent directive, confidence: 1.0).');
+        process.stdout.write(' → ✓ Stored as axiom.\n');
         removeEntry(current.id);
         return true;
       }
 
       case 'drop': {
-        console.log('  ✓ Discarded.');
+        process.stdout.write(' → ✓ Discarded.\n');
         removeEntry(current.id);
         return true;
       }
@@ -162,7 +162,7 @@ async function resolveEntry(
 
       case 'skip':
       default:
-        console.log('  → Skipped (stays in queue).');
+        process.stdout.write(' → Skipped.\n');
         return false;
     }
   }

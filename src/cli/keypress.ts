@@ -60,7 +60,7 @@ export function keypress<T>(
       if (!match) return; // ignore unrecognised keys
 
       cleanup();
-      process.stdout.write(`${match.label}\n`);
+      process.stdout.write(`\n  ${match.label}`);
       resolve(match.value);
     };
 

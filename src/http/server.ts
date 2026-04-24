@@ -20,7 +20,7 @@ export function startServer(port: number) {
   app.use('/api', apiRouter);
 
   // Bind to loopback only — no access from other hosts on the network
-  return app.listen(port, '127.0.0.1', () => {
+  return app.listen(port, '0.0.0.0', () => {
     console.log(`[cerebellum] HTTP daemon running on http://127.0.0.1:${port}`);
   });
 }

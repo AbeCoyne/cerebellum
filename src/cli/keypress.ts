@@ -87,9 +87,30 @@ const hybridSelect = createPrompt(
   },
 );
 
+async function readlineFallback<T>(
+  message: string,
+  choices: KeyChoice<T>[],
+): Promise<T> {
+  const { createInterface } = await import('node:readline');
+  const legend = choices.map(c => `${c.key}) ${c.label}`).join('  ');
+  return new Promise<T>((resolve) => {
+    const rl = createInterface({ input: process.stdin, output: process.stdout, terminal: false });
+    const ask = () => {
+      rl.question(`${message}  ${legend}\n> `, (answer) => {
+        const key = answer.trim().toLowerCase();
+        const match = choices.find(c => c.key === key || c.alias === key);
+        if (match) { rl.close(); resolve(match.value); }
+        else { ask(); }
+      });
+    };
+    ask();
+  });
+}
+
 export function keypress<T>(
   message: string,
   choices: KeyChoice<T>[],
 ): Promise<T> {
+  if (!process.stdin.isTTY) return readlineFallback(message, choices);
   return hybridSelect({ message, choices });
 }

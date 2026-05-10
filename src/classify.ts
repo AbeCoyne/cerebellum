@@ -21,7 +21,7 @@ Type guide:
 - preference: a personal taste, aesthetic, or opinion — things you like, dislike, or prefer
 
 Refs guide:
-- Extract any absolute file paths (e.g. /Users/..., ~/..., ./src/...)
+- Extract any file paths (e.g. /Users/..., ~/..., ./src/...)
 - Extract any URLs (https://..., http://...)
 - Keep them verbatim — do not normalize or shorten`;
 

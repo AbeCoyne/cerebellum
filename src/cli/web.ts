@@ -59,7 +59,7 @@ async function resolveEntry(entry: WebEntry, index: number, total: number): Prom
     { key: 'p', label: 'Pass through', value: 'pass'        as const },
     { key: 'd', label: 'Drop',         value: 'drop'        as const },
     { key: 's', label: 'Skip',         value: 'skip'        as const },
-    { key: 'q', alias: 'escape', label: 'Quit [ESC]', value: 'quit' as const },
+    { key: 'q', alias: 'escape', label: 'Quit', value: 'quit' as const },
   ]);
 
   switch (choice) {

@@ -178,6 +178,8 @@ async function cmd_stats() {
 
 // ─── route ────────────────────────────────────────────────────────────────────
 
+try {
+
 if (!command || command === 'help' || command === '--help' || command === '-h') {
   print_help();
 
@@ -276,6 +278,13 @@ if (!command || command === 'help' || command === '--help' || command === '-h') 
 } else {
   // Default: treat argument(s) as a thought to capture
   await cmd_capture(args.join(' '));
+}
+
+} catch (err) {
+  if (err instanceof Error && err.name === 'ExitPromptError') {
+    process.exit(0);
+  }
+  throw err;
 }
 
 // Exit cleanly — don't hang on fire-and-forget async evaluations

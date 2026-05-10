@@ -12,6 +12,7 @@ export interface ThoughtMetadata {
   topics:       string[];
   mentions:     string[];
   action_items: string[];
+  refs?:        string[];
 }
 
 export interface Thought {

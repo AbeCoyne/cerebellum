@@ -6,7 +6,7 @@ import { handleMcpRequest } from './mcp.js';
 // Origins allowed to call the local daemon.
 // Covers: Vite dev server (http://localhost:5173), any localhost port,
 // and the Tauri production webview (tauri://localhost).
-const ALLOWED_ORIGINS = /^(https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?|tauri:\/\/localhost)$/;
+const ALLOWED_ORIGINS = /^(https?:\/\/(localhost|127\.0\.0\.1|tauri\.localhost)(:\d+)?|tauri:\/\/localhost)$/;
 
 export function startServer(port: number) {
   const app = express();

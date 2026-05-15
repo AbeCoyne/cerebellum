@@ -80,20 +80,16 @@ cerebellum — personal second brain CLI
 // ─── capture ─────────────────────────────────────────────────────────────────
 
 async function cmd_capture(text: string, is_axiom = false) {
+  // Bypass Operator and await GK evaluation inline so the entry is in the
+  // review queue before process.exit(0) fires. The Operator's synthesis
+  // clustering is designed for web clippings; direct captures don't need it.
+  const entry = enqueue(text, 'cli', undefined, is_axiom);
+  await evaluate(entry);
+  const ready = readQueue().filter(e => e.status === 'evaluated' || e.status === 'gate-failed').length;
   if (is_axiom) {
-    // --axiom bypasses Operator entirely → straight to GK
-    const entry = enqueue(text, 'cli', undefined, true);
-    evaluate(entry).catch(err =>
-      console.error('[gate] background evaluation error:', err),
-    );
-    const total = readQueue().length;
-    console.log(`⚡ Queued as axiom (${total} in queue)`);
-    console.log(`  Run 'memo review' to evaluate and store.`);
+    console.log(`⚡ Queued as axiom (${ready} ready to review)`);
   } else {
-    // Normal capture → Operator (holds in web.json, evaluates async)
-    await intake(text, 'cli');
-    console.log(`✓ Held for synthesis`);
-    console.log(`  Run 'memo web' to inspect or 'memo review' to see GK queue.`);
+    console.log(`✓ Queued (${ready} ready to review)`);
   }
 }
 

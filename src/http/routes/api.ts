@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { captureThought } from '../../capture.js';
 import { searchByEmbedding, listRecent, getStats } from '../../db.js';
 import { generateEmbedding } from '../../embeddings.js';
+import { readQueue, removeEntry } from '../../gatekeeper/queue.js';
 
 export const router = Router();
 
@@ -11,7 +12,12 @@ export const router = Router();
  */
 router.post('/capture', async (req: Request, res: Response) => {
   try {
-    const { content } = req.body;
+    const { content, cortex_source_type, cortex_source_id, cortex_title } = req.body as {
+      content?: string;
+      cortex_source_type?: string;
+      cortex_source_id?: string;
+      cortex_title?: string;
+    };
 
     // Validate required field
     if (!content || typeof content !== 'string') {
@@ -19,8 +25,14 @@ router.post('/capture', async (req: Request, res: Response) => {
       return;
     }
 
+    // cortex_source_type goes to its own column; cortex_source_id / cortex_title stay in metadata
+    const extra: Record<string, unknown> = {};
+    if (cortex_source_type) extra.cortex_source_type = cortex_source_type;
+    if (cortex_source_id)   extra.cortex_source_id   = cortex_source_id;
+    if (cortex_title)       extra.cortex_title        = cortex_title;
+
     // Capture with source locked to 'api'
-    const result = await captureThought(content, 'api');
+    const result = await captureThought(content, 'api', undefined, Object.keys(extra).length ? extra : undefined);
 
     res.json({
       success: true,
@@ -114,6 +126,122 @@ router.get('/stats', async (req: Request, res: Response) => {
   try {
     const stats = await getStats();
     res.json(stats);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: message });
+  }
+});
+
+// ─── Gatekeeper queue endpoints (for CORTEX Settings review UI) ───────────────
+
+/**
+ * GET /queue
+ * Returns all reviewable queue entries (status: evaluated or gate-failed).
+ * Pending entries (still being evaluated by the Operator) are excluded.
+ */
+router.get('/queue', (_req: Request, res: Response) => {
+  try {
+    const all = readQueue();
+    const reviewable = all.filter(
+      e => e.status === 'evaluated' || e.status === 'gate-failed',
+    );
+    res.json({ entries: reviewable, total: reviewable.length });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: message });
+  }
+});
+
+/**
+ * POST /queue/:id/keep
+ * Store the thought as-is (or use the Gatekeeper's reformulation if requested).
+ * Body: { useReformulation?: boolean }
+ */
+router.post('/queue/:id/keep', async (req: Request, res: Response) => {
+  try {
+    const id = String(req.params.id);
+    const { useReformulation = false } = req.body as { useReformulation?: boolean };
+
+    const entry = readQueue().find(e => e.id === id);
+    if (!entry) { res.status(404).json({ error: 'Entry not found' }); return; }
+
+    const content = useReformulation && entry.verdict?.reformulation
+      ? entry.verdict.reformulation
+      : entry.content;
+
+    await captureThought(content, entry.source);
+    removeEntry(id);
+    res.json({ success: true });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: message });
+  }
+});
+
+/**
+ * POST /queue/:id/drop
+ * Discard the entry without storing it.
+ */
+router.post('/queue/:id/drop', (req: Request, res: Response) => {
+  try {
+    const id = String(req.params.id);
+    const entry = readQueue().find(e => e.id === id);
+    if (!entry) { res.status(404).json({ error: 'Entry not found' }); return; }
+    removeEntry(id);
+    res.json({ success: true });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: message });
+  }
+});
+
+/**
+ * POST /queue/:id/axiom
+ * Store the thought as a permanent axiom.
+ * Body: { useReformulation?: boolean }
+ */
+router.post('/queue/:id/axiom', async (req: Request, res: Response) => {
+  try {
+    const id = String(req.params.id);
+    const { useReformulation = false } = req.body as { useReformulation?: boolean };
+
+    const entry = readQueue().find(e => e.id === id);
+    if (!entry) { res.status(404).json({ error: 'Entry not found' }); return; }
+
+    const content = useReformulation && entry.verdict?.reformulation
+      ? entry.verdict.reformulation
+      : entry.content;
+
+    await captureThought(content, entry.source, 'axiom');
+    removeEntry(id);
+    res.json({ success: true });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: message });
+  }
+});
+
+/**
+ * POST /queue/:id/edit
+ * Store the thought with custom edited content.
+ * Body: { content: string }
+ */
+router.post('/queue/:id/edit', async (req: Request, res: Response) => {
+  try {
+    const id = String(req.params.id);
+    const { content } = req.body as { content?: string };
+
+    if (!content || typeof content !== 'string' || !content.trim()) {
+      res.status(400).json({ error: 'content is required' });
+      return;
+    }
+
+    const entry = readQueue().find(e => e.id === id);
+    if (!entry) { res.status(404).json({ error: 'Entry not found' }); return; }
+
+    await captureThought(content.trim(), entry.source);
+    removeEntry(id);
+    res.json({ success: true });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     res.status(500).json({ error: message });

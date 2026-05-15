@@ -8,7 +8,7 @@ const TABLE      = cfg.env === 'test' ? 'thoughts_test' : 'thoughts';
 const RPC_SEARCH = cfg.env === 'test' ? 'search_thoughts_test' : 'search_thoughts';
 const RPC_STATS  = cfg.env === 'test' ? 'get_stats_test' : 'get_stats';
 
-const THOUGHT_COLUMNS = 'id, content, metadata, source, embedding_model, parent_id, superseded_by, confidence, privacy_tier, created_at';
+const THOUGHT_COLUMNS = 'id, content, metadata, source, cortex_source_type, embedding_model, parent_id, superseded_by, confidence, privacy_tier, created_at';
 
 export async function insertThought(
   content: string,
@@ -16,10 +16,20 @@ export async function insertThought(
   metadata: ThoughtMetadata,
   source: string,
   embeddingModel: string,
+  cortexSourceType?: string,
 ): Promise<Thought> {
+  const row: Record<string, unknown> = {
+    content,
+    embedding: `[${embedding.join(',')}]`,
+    metadata,
+    source,
+    embedding_model: embeddingModel,
+  };
+  if (cortexSourceType) row.cortex_source_type = cortexSourceType;
+
   const { data, error } = await supabase
     .from(TABLE)
-    .insert({ content, embedding: `[${embedding.join(',')}]`, metadata, source, embedding_model: embeddingModel })
+    .insert(row)
     .select(THOUGHT_COLUMNS)
     .single();
 

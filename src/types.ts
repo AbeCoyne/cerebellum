@@ -16,16 +16,17 @@ export interface ThoughtMetadata {
 }
 
 export interface Thought {
-  id:              string;
-  content:         string;
-  metadata:        ThoughtMetadata;
-  source:          string;
-  embedding_model: string;
-  parent_id:       string | null;
-  superseded_by:   string | null;
-  confidence:      number;
-  privacy_tier:    string;
-  created_at:      string;
+  id:                  string;
+  content:             string;
+  metadata:            ThoughtMetadata;
+  source:              string;
+  cortex_source_type:  string | null;
+  embedding_model:     string;
+  parent_id:           string | null;
+  superseded_by:       string | null;
+  confidence:          number;
+  privacy_tier:        string;
+  created_at:          string;
 }
 
 export interface ThoughtWithSimilarity extends Thought {

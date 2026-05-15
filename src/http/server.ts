@@ -3,9 +3,31 @@ import { bearerAuth } from './auth.js';
 import { router as apiRouter } from './routes/api.js';
 import { handleMcpRequest } from './mcp.js';
 
+// Origins allowed to call the local daemon.
+// Covers: Vite dev server (http://localhost:5173), any localhost port,
+// and the Tauri production webview (tauri://localhost).
+const ALLOWED_ORIGINS = /^(https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?|tauri:\/\/localhost)$/;
+
 export function startServer(port: number) {
   const app = express();
   app.use(express.json());
+
+  // ── CORS — localhost only ────────────────────────────────────────────────
+  // The Tauri WebView and Vite dev server both run on localhost; external
+  // origins are never allowed (daemon binds to 127.0.0.1 anyway).
+  app.use((req, res, next) => {
+    const origin = req.headers.origin ?? '';
+    if (ALLOWED_ORIGINS.test(origin)) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    }
+    if (req.method === 'OPTIONS') {
+      res.sendStatus(204);
+      return;
+    }
+    next();
+  });
 
   // Health check — no auth (usable by PM2 health checks and monitoring)
   app.get('/api/health', (_req, res) => {

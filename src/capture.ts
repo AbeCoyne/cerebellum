@@ -15,15 +15,19 @@ export interface CaptureResult {
 /**
  * Embed, classify, and store a thought.
  *
- * @param content      The thought text.
- * @param source       Origin tag (cli | mcp | hook | …).
+ * @param content        The thought text.
+ * @param source         Origin tag (cli | mcp | api | …).
  * @param type_override  When set, overrides the LLM classifier's type assignment.
  *                       Use 'axiom' for permanent directive captures.
+ * @param extra_metadata Additional key/value pairs merged into the stored metadata.
+ *                       Use cortex_source_type / cortex_source_id / cortex_title
+ *                       to record where this thought came from (note, document, etc.).
  */
 export async function captureThought(
-  content:       string,
-  source         = 'cli',
-  type_override?: ThoughtType,
+  content:          string,
+  source            = 'cli',
+  type_override?:   ThoughtType,
+  extra_metadata?:  Record<string, unknown>,
 ): Promise<CaptureResult> {
   let trimmed = content.trim();
   if (!trimmed) throw new Error('Content cannot be empty');
@@ -46,7 +50,20 @@ export async function captureThought(
     metadata.type = type_override;
   }
 
-  const thought = await insertThought(trimmed, embedding, metadata, source, cfg.openrouter.embeddingModel);
+  // Extract cortex_source_type for its dedicated column; keep remaining extras in metadata JSONB
+  const { cortex_source_type, ...remainingExtra } = extra_metadata ?? {};
+  const fullMetadata = Object.keys(remainingExtra).length
+    ? { ...metadata, ...remainingExtra }
+    : metadata;
+
+  const thought = await insertThought(
+    trimmed,
+    embedding,
+    fullMetadata as typeof metadata,
+    source,
+    cfg.openrouter.embeddingModel,
+    cortex_source_type as string | undefined,
+  );
   const elapsed_ms = Date.now() - start;
 
   return { thought, elapsed_ms };

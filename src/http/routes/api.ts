@@ -5,7 +5,7 @@ import { generateEmbedding } from '../../embeddings.js';
 import { readQueue, removeEntry } from '../../gatekeeper/queue.js';
 
 function sourceTypeExtra(source: string): Record<string, string> | undefined {
-  if (source.startsWith('n8n')) return { cortex_source_type: 'email' };
+  if (source.startsWith('n8n')) return { cortex_source_type: 'morning_briefing' };
   return undefined;
 }
 

@@ -8,7 +8,7 @@ import type { KeyChoice } from '../cli/keypress.js';
 import type { QueueEntry } from './types.js';
 
 function sourceTypeExtra(source: string): Record<string, string> | undefined {
-  if (source.startsWith('n8n')) return { cortex_source_type: 'email' };
+  if (source.startsWith('n8n')) return { cortex_source_type: 'morning_briefing' };
   return undefined;
 }
 

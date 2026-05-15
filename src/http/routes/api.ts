@@ -1,8 +1,13 @@
 import { Router, Request, Response } from 'express';
 import { captureThought } from '../../capture.js';
-import { searchByEmbedding, listRecent, getStats } from '../../db.js';
+import { searchByEmbedding, listRecent, getStats, deleteThought, deleteThoughtsBySourceId } from '../../db.js';
 import { generateEmbedding } from '../../embeddings.js';
 import { readQueue, removeEntry } from '../../gatekeeper/queue.js';
+
+function sourceTypeExtra(source: string): Record<string, string> | undefined {
+  if (source.startsWith('n8n')) return { cortex_source_type: 'email' };
+  return undefined;
+}
 
 export const router = Router();
 
@@ -12,11 +17,12 @@ export const router = Router();
  */
 router.post('/capture', async (req: Request, res: Response) => {
   try {
-    const { content, cortex_source_type, cortex_source_id, cortex_title } = req.body as {
+    const { content, cortex_source_type, cortex_source_id, cortex_title, source } = req.body as {
       content?: string;
       cortex_source_type?: string;
       cortex_source_id?: string;
       cortex_title?: string;
+      source?: string;
     };
 
     // Validate required field
@@ -31,8 +37,8 @@ router.post('/capture', async (req: Request, res: Response) => {
     if (cortex_source_id)   extra.cortex_source_id   = cortex_source_id;
     if (cortex_title)       extra.cortex_title        = cortex_title;
 
-    // Capture with source locked to 'api'
-    const result = await captureThought(content, 'api', undefined, Object.keys(extra).length ? extra : undefined);
+    // Capture — caller can pass a source; default to 'api'
+    const result = await captureThought(content, source ?? 'api', undefined, Object.keys(extra).length ? extra : undefined);
 
     res.json({
       success: true,
@@ -169,7 +175,7 @@ router.post('/queue/:id/keep', async (req: Request, res: Response) => {
       ? entry.verdict.reformulation
       : entry.content;
 
-    await captureThought(content, entry.source);
+    await captureThought(content, entry.source, undefined, sourceTypeExtra(entry.source));
     removeEntry(id);
     res.json({ success: true });
   } catch (err) {
@@ -212,9 +218,39 @@ router.post('/queue/:id/axiom', async (req: Request, res: Response) => {
       ? entry.verdict.reformulation
       : entry.content;
 
-    await captureThought(content, entry.source, 'axiom');
+    await captureThought(content, entry.source, 'axiom', sourceTypeExtra(entry.source));
     removeEntry(id);
     res.json({ success: true });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: message });
+  }
+});
+
+/**
+ * POST /queue/:id/replace
+ * Delete the conflicting thought from the DB, then store the new one.
+ * Body: { useReformulation?: boolean }
+ */
+router.post('/queue/:id/replace', async (req: Request, res: Response) => {
+  try {
+    const id = String(req.params.id);
+    const { useReformulation = false } = req.body as { useReformulation?: boolean };
+
+    const entry = readQueue().find(e => e.id === id);
+    if (!entry) { res.status(404).json({ error: 'Entry not found' }); return; }
+
+    const conflictId = entry.verdict?.contradiction?.conflicting_thought_id;
+    if (!conflictId) { res.status(400).json({ error: 'No conflicting thought ID on this entry' }); return; }
+
+    const content = useReformulation && entry.verdict?.reformulation
+      ? entry.verdict.reformulation
+      : entry.content;
+
+    await deleteThought(conflictId);
+    await captureThought(content, entry.source, undefined, sourceTypeExtra(entry.source));
+    removeEntry(id);
+    res.json({ success: true, replaced: conflictId });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     res.status(500).json({ error: message });
@@ -239,9 +275,25 @@ router.post('/queue/:id/edit', async (req: Request, res: Response) => {
     const entry = readQueue().find(e => e.id === id);
     if (!entry) { res.status(404).json({ error: 'Entry not found' }); return; }
 
-    await captureThought(content.trim(), entry.source);
+    await captureThought(content.trim(), entry.source, undefined, sourceTypeExtra(entry.source));
     removeEntry(id);
     res.json({ success: true });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: message });
+  }
+});
+
+/**
+ * DELETE /thoughts/by-source/:sourceId
+ * Delete all thoughts linked to a cortex_source_id.
+ * Used by notes/documents when content is replaced wholesale.
+ */
+router.delete('/thoughts/by-source/:sourceId', async (req: Request, res: Response) => {
+  try {
+    const sourceId = String(req.params.sourceId);
+    const deleted = await deleteThoughtsBySourceId(sourceId);
+    res.json({ success: true, deleted });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     res.status(500).json({ error: message });

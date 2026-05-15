@@ -21,12 +21,14 @@ export interface Thought {
   metadata:            ThoughtMetadata;
   source:              string;
   cortex_source_type:  string | null;
+  cortex_source_id:    string | null;
   embedding_model:     string;
   parent_id:           string | null;
   superseded_by:       string | null;
   confidence:          number;
   privacy_tier:        string;
   created_at:          string;
+  updated_at:          string | null;
 }
 
 export interface ThoughtWithSimilarity extends Thought {

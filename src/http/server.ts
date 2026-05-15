@@ -2,11 +2,12 @@ import express from 'express';
 import { bearerAuth } from './auth.js';
 import { router as apiRouter } from './routes/api.js';
 import { handleMcpRequest } from './mcp.js';
+import { startQueuePoller } from '../queue-poller.js';
 
 // Origins allowed to call the local daemon.
 // Covers: Vite dev server (http://localhost:5173), any localhost port,
 // and the Tauri production webview (tauri://localhost).
-const ALLOWED_ORIGINS = /^(https?:\/\/(localhost|127\.0\.0\.1|tauri\.localhost)(:\d+)?|tauri:\/\/localhost)$/;
+const ALLOWED_ORIGINS = /^(https?:\/\/(localhost|127\.0\.0\.1|tauri\.localhost)(:\d+)?|tauri:\/\/localhost|https:\/\/.+)$/;
 
 export function startServer(port: number) {
   const app = express();
@@ -19,7 +20,7 @@ export function startServer(port: number) {
     const origin = req.headers.origin ?? '';
     if (ALLOWED_ORIGINS.test(origin)) {
       res.setHeader('Access-Control-Allow-Origin', origin);
-      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
       res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
     }
     if (req.method === 'OPTIONS') {
@@ -44,5 +45,6 @@ export function startServer(port: number) {
   // Bind to loopback only — no access from other hosts on the network
   return app.listen(port, '0.0.0.0', () => {
     console.log(`[cerebellum] HTTP daemon running on http://127.0.0.1:${port}`);
+    startQueuePoller();
   });
 }

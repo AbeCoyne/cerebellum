@@ -2,11 +2,17 @@ import { select } from '@inquirer/prompts';
 import { readQueue, removeEntry } from './queue.js';
 import { evaluate } from './index.js';
 import { captureThought } from '../capture.js';
+import { deleteThought } from '../db.js';
 import { keypress } from '../cli/keypress.js';
 import type { KeyChoice } from '../cli/keypress.js';
 import type { QueueEntry } from './types.js';
 
-type ReviewAction = 'keep' | 'drop' | 'axiom' | 'skip' | 'quit' | 'retry';
+function sourceTypeExtra(source: string): Record<string, string> | undefined {
+  if (source.startsWith('n8n')) return { cortex_source_type: 'email' };
+  return undefined;
+}
+
+type ReviewAction = 'keep' | 'drop' | 'axiom' | 'replace' | 'skip' | 'quit' | 'retry';
 
 // ─── display helpers ──────────────────────────────────────────────────────────
 
@@ -39,13 +45,14 @@ function displayEntry(entry: QueueEntry, index: number, total: number): void {
 
   // Contradiction (highest priority — show first)
   if (verdict.contradiction) {
-    const { severity, summary } = verdict.contradiction;
+    const { severity, summary, conflicting_thought_id } = verdict.contradiction;
+    const idHint = conflicting_thought_id ? ` [${conflicting_thought_id.slice(0, 8)}…]` : '';
     if (severity === 'axiom_violation') {
-      console.log(`  🚨 AXIOM VIOLATION: ${summary}`);
+      console.log(`  🚨 AXIOM VIOLATION${idHint}: ${summary}`);
     } else if (severity === 'hard') {
-      console.log(`  ⚠  CONTRADICTION (hard): ${summary}`);
+      console.log(`  ⚠  CONTRADICTION (hard)${idHint}: ${summary}`);
     } else {
-      console.log(`  ↕  Soft contradiction: ${summary}`);
+      console.log(`  ↕  Soft contradiction${idHint}: ${summary}`);
     }
   }
 
@@ -72,24 +79,32 @@ function displayEntry(entry: QueueEntry, index: number, total: number): void {
 function buildChoices(entry: QueueEntry): KeyChoice<ReviewAction>[] {
   const quit: KeyChoice<ReviewAction> = { key: 'q', alias: 'escape', label: 'Quit', value: 'quit' };
 
+  const hasConflict = !!entry.verdict?.contradiction?.conflicting_thought_id;
+
   if (entry.status === 'gate-failed') {
     return [
-      { key: 'r', label: 'Retry', value: 'retry' },
-      { key: 'k', label: 'Keep',  value: 'keep'  },
-      { key: 'a', label: 'Axiom', value: 'axiom' },
-      { key: 'd', label: 'Drop',  value: 'drop'  },
-      { key: 's', label: 'Skip',  value: 'skip'  },
+      { key: 'r', label: 'Retry',   value: 'retry' },
+      { key: 'k', label: 'Keep',    value: 'keep'  },
+      { key: 'a', label: 'Axiom',   value: 'axiom' },
+      { key: 'd', label: 'Drop',    value: 'drop'  },
+      { key: 's', label: 'Skip',    value: 'skip'  },
       quit,
     ];
   }
 
-  return [
+  const choices: KeyChoice<ReviewAction>[] = [
     { key: 'k', label: 'Keep',  value: 'keep'  },
     { key: 'd', label: 'Drop',  value: 'drop'  },
     { key: 'a', label: 'Axiom', value: 'axiom' },
     { key: 's', label: 'Skip',  value: 'skip'  },
     quit,
   ];
+
+  if (hasConflict) {
+    choices.splice(1, 0, { key: 'r', label: 'Replace (delete old)', value: 'replace' });
+  }
+
+  return choices;
 }
 
 /**
@@ -126,12 +141,13 @@ async function resolveEntry(
       }
 
       case 'keep': {
+        const extra = sourceTypeExtra(current.source);
         if (current.verdict?.reformulation) {
           const result = await _offerReformulation(current.verdict.reformulation, current.content);
           if (result.tag === 'back') continue;
-          await captureThought(result.value, current.source);
+          await captureThought(result.value, current.source, undefined, extra);
         } else {
-          await captureThought(current.content, current.source);
+          await captureThought(current.content, current.source, undefined, extra);
         }
         process.stdout.write(' → ✓ Stored.\n');
         removeEntry(current.id);
@@ -139,14 +155,36 @@ async function resolveEntry(
       }
 
       case 'axiom': {
+        const extra = sourceTypeExtra(current.source);
         if (current.verdict?.reformulation) {
           const result = await _offerReformulation(current.verdict.reformulation, current.content);
           if (result.tag === 'back') continue;
-          await captureThought(result.value, current.source, 'axiom');
+          await captureThought(result.value, current.source, 'axiom', extra);
         } else {
-          await captureThought(current.content, current.source, 'axiom');
+          await captureThought(current.content, current.source, 'axiom', extra);
         }
         process.stdout.write(' → ✓ Stored as axiom.\n');
+        removeEntry(current.id);
+        return true;
+      }
+
+      case 'replace': {
+        const conflictId = current.verdict?.contradiction?.conflicting_thought_id;
+        if (!conflictId) { console.log('  No conflicting thought ID — use Keep instead.'); continue; }
+        const content = current.verdict?.reformulation
+          ? (await _offerReformulation(current.verdict.reformulation, current.content)).tag === 'back'
+            ? null
+            : current.verdict.reformulation
+          : current.content;
+        if (content === null) continue;
+        try {
+          await deleteThought(conflictId);
+          process.stdout.write(` → ✓ Deleted old thought [${conflictId.slice(0, 8)}…]\n`);
+        } catch (err) {
+          console.log(`  ⚠  Could not delete old thought: ${err instanceof Error ? err.message : err}`);
+        }
+        await captureThought(content, current.source, undefined, sourceTypeExtra(current.source));
+        process.stdout.write(' → ✓ Stored replacement.\n');
         removeEntry(current.id);
         return true;
       }

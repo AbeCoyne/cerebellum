@@ -1,6 +1,6 @@
 import { generateEmbedding } from './embeddings.js';
 import { classifyThought } from './classify.js';
-import { insertThought } from './db.js';
+import { insertThought, upsertThoughtBySourceId } from './db.js';
 import { withRetry } from './utils/retry.js';
 import { cfg } from './config.js';
 import type { Thought, ThoughtType } from './types.js';
@@ -50,20 +50,33 @@ export async function captureThought(
     metadata.type = type_override;
   }
 
-  // Extract cortex_source_type for its dedicated column; keep remaining extras in metadata JSONB
-  const { cortex_source_type, ...remainingExtra } = extra_metadata ?? {};
+  // Extract dedicated columns; keep remaining extras in metadata JSONB
+  const { cortex_source_type, cortex_source_id, ...remainingExtra } = extra_metadata ?? {};
   const fullMetadata = Object.keys(remainingExtra).length
     ? { ...metadata, ...remainingExtra }
     : metadata;
 
-  const thought = await insertThought(
-    trimmed,
-    embedding,
-    fullMetadata as typeof metadata,
-    source,
-    cfg.openrouter.embeddingModel,
-    cortex_source_type as string | undefined,
-  );
+  const sourceId   = cortex_source_id   as string | undefined;
+  const sourceType = cortex_source_type as string | undefined;
+
+  const thought = sourceId
+    ? await upsertThoughtBySourceId(
+        sourceId,
+        trimmed,
+        embedding,
+        fullMetadata as typeof metadata,
+        source,
+        cfg.openrouter.embeddingModel,
+        sourceType,
+      )
+    : await insertThought(
+        trimmed,
+        embedding,
+        fullMetadata as typeof metadata,
+        source,
+        cfg.openrouter.embeddingModel,
+        sourceType,
+      );
   const elapsed_ms = Date.now() - start;
 
   return { thought, elapsed_ms };

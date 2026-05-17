@@ -32,6 +32,11 @@ router.post('/capture', async (req: Request, res: Response) => {
       return;
     }
 
+    // Temporary debug log — remove after confirming cortex_multi_chunk delivery
+    if (cortex_source_id) {
+      console.log(`[capture-debug] source=${source} multi_chunk=${cortex_multi_chunk} (type=${typeof cortex_multi_chunk}) source_id=${cortex_source_id.slice(0,8)}`);
+    }
+
     // cortex_source_type goes to its own column; cortex_source_id / cortex_title / cortex_multi_chunk passed as extra
     const extra: Record<string, unknown> = {};
     if (cortex_source_type)               extra.cortex_source_type  = cortex_source_type;

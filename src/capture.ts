@@ -51,15 +51,18 @@ export async function captureThought(
   }
 
   // Extract dedicated columns; keep remaining extras in metadata JSONB
-  const { cortex_source_type, cortex_source_id, ...remainingExtra } = extra_metadata ?? {};
+  const { cortex_source_type, cortex_source_id, cortex_multi_chunk, ...remainingExtra } = extra_metadata ?? {};
   const fullMetadata = Object.keys(remainingExtra).length
     ? { ...metadata, ...remainingExtra }
     : metadata;
 
-  const sourceId   = cortex_source_id   as string | undefined;
-  const sourceType = cortex_source_type as string | undefined;
+  const sourceId    = cortex_source_id    as string  | undefined;
+  const sourceType  = cortex_source_type  as string  | undefined;
+  const multiChunk  = cortex_multi_chunk  as boolean | undefined;
 
-  const thought = sourceId
+  // Multi-chunk sources (notes, documents): INSERT each chunk individually so all chunks are stored.
+  // Single-thought sources (subscriptions, bills): UPSERT so re-runs update in place.
+  const thought = (sourceId && !multiChunk)
     ? await upsertThoughtBySourceId(
         sourceId,
         trimmed,
@@ -76,6 +79,7 @@ export async function captureThought(
         source,
         cfg.openrouter.embeddingModel,
         sourceType,
+        sourceId,
       );
   const elapsed_ms = Date.now() - start;
 

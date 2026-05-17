@@ -17,11 +17,12 @@ export const router = Router();
  */
 router.post('/capture', async (req: Request, res: Response) => {
   try {
-    const { content, cortex_source_type, cortex_source_id, cortex_title, source } = req.body as {
+    const { content, cortex_source_type, cortex_source_id, cortex_title, cortex_multi_chunk, source } = req.body as {
       content?: string;
       cortex_source_type?: string;
       cortex_source_id?: string;
       cortex_title?: string;
+      cortex_multi_chunk?: boolean;
       source?: string;
     };
 
@@ -31,11 +32,12 @@ router.post('/capture', async (req: Request, res: Response) => {
       return;
     }
 
-    // cortex_source_type goes to its own column; cortex_source_id / cortex_title stay in metadata
+    // cortex_source_type goes to its own column; cortex_source_id / cortex_title / cortex_multi_chunk passed as extra
     const extra: Record<string, unknown> = {};
-    if (cortex_source_type) extra.cortex_source_type = cortex_source_type;
-    if (cortex_source_id)   extra.cortex_source_id   = cortex_source_id;
-    if (cortex_title)       extra.cortex_title        = cortex_title;
+    if (cortex_source_type)               extra.cortex_source_type  = cortex_source_type;
+    if (cortex_source_id)                 extra.cortex_source_id    = cortex_source_id;
+    if (cortex_title)                     extra.cortex_title         = cortex_title;
+    if (cortex_multi_chunk !== undefined) extra.cortex_multi_chunk   = cortex_multi_chunk;
 
     // Capture — caller can pass a source; default to 'api'
     const result = await captureThought(content, source ?? 'api', undefined, Object.keys(extra).length ? extra : undefined);
